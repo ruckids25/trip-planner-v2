@@ -84,7 +84,7 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
               type: guessSpotType(place.types),
               address: place.address || '',
               hours: place.hours || '',
-              rating: place.rating ?? null,
+              rating: place.rating ?? undefined,
               photoRef: place.photoRef || '',
               source: 'ocr' as const,
             }]);
