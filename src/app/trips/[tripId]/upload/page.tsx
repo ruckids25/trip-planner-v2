@@ -82,10 +82,10 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
               lat: place.lat,
               lng: place.lng,
               type: guessSpotType(place.types),
-              address: place.address,
-              hours: place.hours,
-              rating: place.rating ?? undefined,
-              photoRef: place.photoRef,
+              address: place.address || '',
+              hours: place.hours || '',
+              rating: place.rating ?? null,
+              photoRef: place.photoRef || '',
               source: 'ocr' as const,
             }]);
             resolved++;

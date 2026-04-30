@@ -84,17 +84,24 @@ export async function deleteTrip(tripId: string): Promise<void> {
 
 export async function addSpot(tripId: string, spot: Omit<Spot, 'id' | 'createdAt'>): Promise<string> {
   const ref = await addDoc(collection(db, 'trips', tripId, 'spots'), {
-    ...spot,
+    ...cleanData(spot),
     createdAt: serverTimestamp(),
   });
   return ref.id;
+}
+
+// Strip undefined values (Firestore rejects them)
+function cleanData<T extends Record<string, unknown>>(obj: T): T {
+  return Object.fromEntries(
+    Object.entries(obj).filter(([, v]) => v !== undefined)
+  ) as T;
 }
 
 export async function addSpotsBatch(tripId: string, spots: Omit<Spot, 'id' | 'createdAt'>[]): Promise<void> {
   const batch = writeBatch(db);
   spots.forEach(spot => {
     const ref = doc(collection(db, 'trips', tripId, 'spots'));
-    batch.set(ref, { ...spot, createdAt: serverTimestamp() });
+    batch.set(ref, { ...cleanData(spot), createdAt: serverTimestamp() });
   });
   await batch.commit();
 }
