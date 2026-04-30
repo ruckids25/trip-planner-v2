@@ -35,13 +35,29 @@ export async function getTrip(tripId: string): Promise<Trip | null> {
 }
 
 export async function getUserTrips(uid: string): Promise<Trip[]> {
-  const q = query(
-    collection(db, 'trips'),
-    where('ownerId', '==', uid),
-    orderBy('updatedAt', 'desc')
-  );
-  const snap = await getDocs(q);
-  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Trip));
+  try {
+    const q = query(
+      collection(db, 'trips'),
+      where('ownerId', '==', uid),
+      orderBy('updatedAt', 'desc')
+    );
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as Trip));
+  } catch {
+    // Fallback: query without orderBy (works without composite index)
+    const q = query(
+      collection(db, 'trips'),
+      where('ownerId', '==', uid)
+    );
+    const snap = await getDocs(q);
+    const trips = snap.docs.map(d => ({ id: d.id, ...d.data() } as Trip));
+    // Sort client-side
+    return trips.sort((a, b) => {
+      const aTime = (a as any).updatedAt?.toMillis?.() || 0;
+      const bTime = (b as any).updatedAt?.toMillis?.() || 0;
+      return bTime - aTime;
+    });
+  }
 }
 
 export async function updateTrip(tripId: string, data: Partial<Trip>): Promise<void> {

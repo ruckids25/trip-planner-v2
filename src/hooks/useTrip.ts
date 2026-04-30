@@ -33,8 +33,13 @@ export function useUserTrips(uid?: string) {
   const refresh = useCallback(async () => {
     if (!uid) return;
     setLoading(true);
-    const t = await getUserTrips(uid);
-    setTrips(t);
+    try {
+      const t = await getUserTrips(uid);
+      setTrips(t);
+    } catch (err) {
+      console.error('Failed to fetch trips:', err);
+      setTrips([]);
+    }
     setLoading(false);
   }, [uid]);
 
