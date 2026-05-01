@@ -102,7 +102,7 @@ function DashboardContent() {
               <div
                 key={trip.id}
                 className="bg-white rounded-2xl border border-gray-100 p-5 hover:shadow-md transition-all cursor-pointer group"
-                onClick={() => router.push(`/trips/${trip.id}/upload`)}
+                onClick={() => router.push(`/trips/${trip.id}/plan`)}
               >
                 <div className="flex items-start justify-between mb-3">
                   <div>

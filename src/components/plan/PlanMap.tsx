@@ -30,9 +30,11 @@ export default function PlanMap({ spots, dayColor, hotelLat, hotelLng, selectedS
         zoom: 13,
       });
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OSM',
+      // Minimal map style — no POI icons, cafes, restaurants etc.
+      L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
         maxZoom: 19,
+        subdomains: 'abcd',
       }).addTo(map);
 
       mapInstanceRef.current = map;

@@ -27,6 +27,7 @@ export interface Trip {
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }
+
 export interface Spot {
   id: string;
   name: string;
@@ -57,6 +58,7 @@ export interface Group {
   assignedDay?: number;
   sortOrder?: number;
 }
+
 export interface LatLng {
   lat: number;
   lng: number;
@@ -75,6 +77,13 @@ export const SPOT_TYPE_CONFIG: Record<SpotType, { label: string; emoji: string; 
   hotel: { label: 'โรงแรม', emoji: '🏨', color: '#34495E' },
   other: { label: 'อื่นๆ', emoji: '📍', color: '#7F8C8D' },
 };
+
+export interface DayMeta {
+  id: string;
+  dayIdx: number;
+  area: string;
+  description: string;
+}
 
 export interface ApiUsageLog {
   id: string;

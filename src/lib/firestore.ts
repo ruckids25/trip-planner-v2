@@ -4,7 +4,7 @@ import {
   onSnapshot, Unsubscribe, setDoc, Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Trip, Spot, Group, ApiUsageLog } from '@/types';
+import { Trip, Spot, Group, DayMeta, ApiUsageLog } from '@/types';
 
 // ═══════════════════════════════════════
 // TRIPS
@@ -27,6 +27,7 @@ export async function createTrip(data: {
   });
   return ref.id;
 }
+
 export async function getTrip(tripId: string): Promise<Trip | null> {
   const snap = await getDoc(doc(db, 'trips', tripId));
   if (!snap.exists()) return null;
@@ -58,6 +59,7 @@ export async function getUserTrips(uid: string): Promise<Trip[]> {
     });
   }
 }
+
 export async function updateTrip(tripId: string, data: Partial<Trip>): Promise<void> {
   await updateDoc(doc(db, 'trips', tripId), {
     ...data,
@@ -87,6 +89,7 @@ export async function addSpot(tripId: string, spot: Omit<Spot, 'id' | 'createdAt
   });
   return ref.id;
 }
+
 // Strip undefined values (Firestore rejects them)
 function cleanData<T extends Record<string, unknown>>(obj: T): T {
   return Object.fromEntries(
@@ -115,6 +118,7 @@ export async function updateSpot(tripId: string, spotId: string, data: Partial<S
 export async function deleteSpot(tripId: string, spotId: string): Promise<void> {
   await deleteDoc(doc(db, 'trips', tripId, 'spots', spotId));
 }
+
 export function subscribeSpots(tripId: string, onChange: (spots: Spot[]) => void): Unsubscribe {
   return onSnapshot(collection(db, 'trips', tripId, 'spots'), snap => {
     onChange(snap.docs.map(d => ({ id: d.id, ...d.data() } as Spot)));
@@ -148,6 +152,7 @@ export function subscribeGroups(tripId: string, onChange: (groups: Group[]) => v
     onChange(snap.docs.map(d => ({ id: d.id, ...d.data() } as Group)));
   });
 }
+
 // ═══════════════════════════════════════
 // USER
 // ═══════════════════════════════════════
@@ -162,6 +167,29 @@ export async function saveUser(uid: string, data: {
     uid,
     lastLoginAt: serverTimestamp(),
   }, { merge: true });
+}
+
+// ═══════════════════════════════════════
+// DAY META (area label + description per day)
+// ═══════════════════════════════════════
+
+export async function getDayMetas(tripId: string): Promise<DayMeta[]> {
+  const snap = await getDocs(collection(db, 'trips', tripId, 'dayMeta'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as DayMeta));
+}
+
+export async function saveDayMeta(tripId: string, dayIdx: number, data: { area: string; description: string }): Promise<void> {
+  const docId = `day-${dayIdx}`;
+  await setDoc(doc(db, 'trips', tripId, 'dayMeta', docId), {
+    dayIdx,
+    ...data,
+  }, { merge: true });
+}
+
+export function subscribeDayMetas(tripId: string, onChange: (metas: DayMeta[]) => void): Unsubscribe {
+  return onSnapshot(collection(db, 'trips', tripId, 'dayMeta'), snap => {
+    onChange(snap.docs.map(d => ({ id: d.id, ...d.data() } as DayMeta)));
+  });
 }
 
 // ═══════════════════════════════════════
@@ -190,6 +218,7 @@ export async function logApiUsage(data: {
     // Don't throw — logging should not break the main flow
   }
 }
+
 // ═══════════════════════════════════════
 // ADMIN QUERIES
 // ═══════════════════════════════════════

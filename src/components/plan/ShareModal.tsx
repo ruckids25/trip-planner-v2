@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { Trip } from '@/types';
 import Modal from '@/components/ui/Modal';
-import { Copy, Check, Link as LinkIcon, Mail } from 'lucide-react';
+import { Copy, Check, Link as LinkIcon, Mail, Eye, Pencil } from 'lucide-react';
 
 interface ShareModalProps {
   trip: Trip;
@@ -13,7 +13,10 @@ interface ShareModalProps {
 
 export default function ShareModal({ trip, open, onClose }: ShareModalProps) {
   const [copied, setCopied] = useState(false);
-  const shareUrl = typeof window !== 'undefined' ? `${window.location.origin}/trips/${trip.id}/plan` : '';
+  const [permission, setPermission] = useState<'view' | 'edit'>('view');
+
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const shareUrl = `${baseUrl}/trips/${trip.id}/plan${permission === 'edit' ? '?mode=edit' : ''}`;
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(shareUrl);
@@ -26,7 +29,37 @@ export default function ShareModal({ trip, open, onClose }: ShareModalProps) {
       <div className="space-y-4">
         <div>
           <p className="text-sm text-gray-600 mb-3">
-            Share this link with friends so they can view and collaborate on <strong>{trip.title}</strong>.
+            Share this link with friends so they can access <strong>{trip.title}</strong>.
+          </p>
+
+          {/* Permission toggle */}
+          <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-3">
+            <button
+              onClick={() => { setPermission('view'); setCopied(false); }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                permission === 'view'
+                  ? 'bg-white text-blue-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Eye size={14} /> View Only
+            </button>
+            <button
+              onClick={() => { setPermission('edit'); setCopied(false); }}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
+                permission === 'edit'
+                  ? 'bg-white text-orange-600 shadow-sm'
+                  : 'text-gray-500 hover:text-gray-700'
+              }`}
+            >
+              <Pencil size={14} /> Can Edit
+            </button>
+          </div>
+
+          <p className="text-xs text-gray-400 mb-2">
+            {permission === 'view'
+              ? 'Recipients can view the trip plan but cannot make changes.'
+              : 'Recipients can view and edit spots, times, and notes.'}
           </p>
 
           <div className="flex items-center gap-2">

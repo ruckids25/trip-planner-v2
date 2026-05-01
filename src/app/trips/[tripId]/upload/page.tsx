@@ -33,6 +33,7 @@ function guessSpotType(types: string[]): SpotType {
   }
   return 'other';
 }
+
 export default function UploadPage({ params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = use(params);
   const { trip } = useTrip(tripId);
@@ -62,6 +63,7 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
         // Step 1: Resize + OCR
         const base64 = await resizeAndCompress(file);
         const { placeNames } = await ocrImage(base64);
+
         // Log Vision API usage
         if (user) {
           logApiUsage({
@@ -87,6 +89,7 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
         let resolved = 0;
         for (const name of placeNames) {
           const place = await lookupPlace(name, trip?.country || '');
+
           // Log Places API usage
           if (user) {
             logApiUsage({
@@ -115,6 +118,7 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
             p.id === itemId ? { ...p, resolvedCount: resolved } : p
           ));
         }
+
         setProcessing(prev => prev.map(p =>
           p.id === itemId ? { ...p, status: 'done' as const, resolvedCount: resolved } : p
         ));
@@ -140,6 +144,7 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
     }
     setSaving(false);
   };
+
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
       <div>
