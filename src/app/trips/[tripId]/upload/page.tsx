@@ -11,6 +11,8 @@ import { useToast } from '@/components/ui/Toast';
 import { resizeAndCompress } from '@/lib/image-utils';
 import { ocrImage, lookupPlace } from '@/lib/vision';
 import { Spot, SpotType } from '@/types';
+import { logApiUsage } from '@/lib/firestore';
+import { useAuthContext } from '@/components/auth/AuthProvider';
 import { ArrowRight } from 'lucide-react';
 
 function guessSpotType(types: string[]): SpotType {
@@ -31,12 +33,12 @@ function guessSpotType(types: string[]): SpotType {
   }
   return 'other';
 }
-
 export default function UploadPage({ params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = use(params);
   const { trip } = useTrip(tripId);
   const { addBatch } = useSpots(tripId);
   const { toast } = useToast();
+  const { user } = useAuthContext();
   const router = useRouter();
 
   const [processing, setProcessing] = useState<ProcessingItem[]>([]);
@@ -60,6 +62,15 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
         // Step 1: Resize + OCR
         const base64 = await resizeAndCompress(file);
         const { placeNames } = await ocrImage(base64);
+        // Log Vision API usage
+        if (user) {
+          logApiUsage({
+            userId: user.uid,
+            userEmail: user.email || '',
+            endpoint: 'vision',
+            metadata: { fileName: file.name, placesFound: placeNames.length },
+          });
+        }
 
         if (placeNames.length === 0) {
           setProcessing(prev => prev.map(p =>
@@ -76,6 +87,16 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
         let resolved = 0;
         for (const name of placeNames) {
           const place = await lookupPlace(name, trip?.country || '');
+          // Log Places API usage
+          if (user) {
+            logApiUsage({
+              userId: user.uid,
+              userEmail: user.email || '',
+              endpoint: 'places',
+              metadata: { query: name, found: !!place },
+            });
+          }
+
           if (place && place.lat && place.lng) {
             setExtractedSpots(prev => [...prev, {
               name: place.name,
@@ -94,7 +115,6 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
             p.id === itemId ? { ...p, resolvedCount: resolved } : p
           ));
         }
-
         setProcessing(prev => prev.map(p =>
           p.id === itemId ? { ...p, status: 'done' as const, resolvedCount: resolved } : p
         ));
@@ -106,7 +126,7 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
     }
 
     setIsProcessing(false);
-  }, [trip]);
+  }, [trip, user]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -120,7 +140,6 @@ export default function UploadPage({ params }: { params: Promise<{ tripId: strin
     }
     setSaving(false);
   };
-
   return (
     <div className="max-w-3xl mx-auto px-4 py-8 space-y-8">
       <div>

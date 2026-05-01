@@ -2,22 +2,27 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Users: read by authenticated, write by owner
+    // Helper: check if user is admin
+    function isAdmin() {
+      return request.auth != null && request.auth.token.email == 'ruckids@gmail.com';
+    }
+
+    // Users: read by authenticated, write by owner, admin reads all
     match /users/{uid} {
       allow read: if request.auth != null;
       allow write: if request.auth.uid == uid;
     }
 
-    // Trips: owner + collaborators
+    // Trips: owner + collaborators + admin reads all
     match /trips/{tripId} {
       allow read: if request.auth != null &&
         (resource.data.ownerId == request.auth.uid ||
-         request.auth.uid in resource.data.collaborators);
+         request.auth.uid in resource.data.collaborators ||
+         isAdmin());
       allow create: if request.auth != null;
       allow update, delete: if request.auth != null &&
         resource.data.ownerId == request.auth.uid;
-
-      // Spots & Groups: inherit from parent trip
+      // Spots & Groups: inherit from parent trip + admin reads
       match /{subcol}/{docId} {
         allow read, write: if request.auth != null &&
           (get(/databases/$(database)/documents/trips/$(tripId))
@@ -25,7 +30,14 @@ service cloud.firestore {
            request.auth.uid in
             get(/databases/$(database)/documents/trips/$(tripId))
               .data.collaborators);
+        allow read: if isAdmin();
       }
+    }
+
+    // API Usage logs: any authenticated user can write, admin can read all
+    match /apiUsage/{logId} {
+      allow create: if request.auth != null;
+      allow read: if isAdmin();
     }
   }
 }

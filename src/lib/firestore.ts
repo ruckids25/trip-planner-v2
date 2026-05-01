@@ -1,10 +1,10 @@
 import {
   collection, doc, addDoc, getDoc, getDocs, updateDoc, deleteDoc,
   query, where, orderBy, serverTimestamp, writeBatch,
-  onSnapshot, Unsubscribe, setDoc,
+  onSnapshot, Unsubscribe, setDoc, Timestamp,
 } from 'firebase/firestore';
 import { db } from './firebase';
-import { Trip, Spot, Group } from '@/types';
+import { Trip, Spot, Group, ApiUsageLog } from '@/types';
 
 // ═══════════════════════════════════════
 // TRIPS
@@ -27,7 +27,6 @@ export async function createTrip(data: {
   });
   return ref.id;
 }
-
 export async function getTrip(tripId: string): Promise<Trip | null> {
   const snap = await getDoc(doc(db, 'trips', tripId));
   if (!snap.exists()) return null;
@@ -59,7 +58,6 @@ export async function getUserTrips(uid: string): Promise<Trip[]> {
     });
   }
 }
-
 export async function updateTrip(tripId: string, data: Partial<Trip>): Promise<void> {
   await updateDoc(doc(db, 'trips', tripId), {
     ...data,
@@ -89,7 +87,6 @@ export async function addSpot(tripId: string, spot: Omit<Spot, 'id' | 'createdAt
   });
   return ref.id;
 }
-
 // Strip undefined values (Firestore rejects them)
 function cleanData<T extends Record<string, unknown>>(obj: T): T {
   return Object.fromEntries(
@@ -118,7 +115,6 @@ export async function updateSpot(tripId: string, spotId: string, data: Partial<S
 export async function deleteSpot(tripId: string, spotId: string): Promise<void> {
   await deleteDoc(doc(db, 'trips', tripId, 'spots', spotId));
 }
-
 export function subscribeSpots(tripId: string, onChange: (spots: Spot[]) => void): Unsubscribe {
   return onSnapshot(collection(db, 'trips', tripId, 'spots'), snap => {
     onChange(snap.docs.map(d => ({ id: d.id, ...d.data() } as Spot)));
@@ -152,7 +148,6 @@ export function subscribeGroups(tripId: string, onChange: (groups: Group[]) => v
     onChange(snap.docs.map(d => ({ id: d.id, ...d.data() } as Group)));
   });
 }
-
 // ═══════════════════════════════════════
 // USER
 // ═══════════════════════════════════════
@@ -167,4 +162,69 @@ export async function saveUser(uid: string, data: {
     uid,
     lastLoginAt: serverTimestamp(),
   }, { merge: true });
+}
+
+// ═══════════════════════════════════════
+// API USAGE LOGGING
+// ═══════════════════════════════════════
+
+const API_COSTS: Record<string, number> = {
+  vision: 0.0015,   // ~$1.50 per 1000 requests
+  places: 0.017,    // ~$17 per 1000 requests
+};
+
+export async function logApiUsage(data: {
+  userId: string;
+  userEmail: string;
+  endpoint: 'vision' | 'places';
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    await addDoc(collection(db, 'apiUsage'), {
+      ...data,
+      estimatedCost: API_COSTS[data.endpoint] || 0,
+      timestamp: serverTimestamp(),
+    });
+  } catch (err) {
+    console.error('Failed to log API usage:', err);
+    // Don't throw — logging should not break the main flow
+  }
+}
+// ═══════════════════════════════════════
+// ADMIN QUERIES
+// ═══════════════════════════════════════
+
+export async function getAllUsers(): Promise<Record<string, unknown>[]> {
+  const snap = await getDocs(collection(db, 'users'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+export async function getAllTrips(): Promise<Trip[]> {
+  const snap = await getDocs(collection(db, 'trips'));
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as Trip));
+}
+
+export async function getAllApiUsage(): Promise<ApiUsageLog[]> {
+  const q = query(
+    collection(db, 'apiUsage'),
+    orderBy('timestamp', 'desc')
+  );
+  try {
+    const snap = await getDocs(q);
+    return snap.docs.map(d => ({ id: d.id, ...d.data() } as ApiUsageLog));
+  } catch {
+    // Fallback without orderBy if index not ready
+    const snap = await getDocs(collection(db, 'apiUsage'));
+    const logs = snap.docs.map(d => ({ id: d.id, ...d.data() } as ApiUsageLog));
+    return logs.sort((a, b) => {
+      const aTime = a.timestamp?.toMillis?.() || 0;
+      const bTime = b.timestamp?.toMillis?.() || 0;
+      return bTime - aTime;
+    });
+  }
+}
+
+export async function getSpotCountForTrip(tripId: string): Promise<number> {
+  const snap = await getDocs(collection(db, 'trips', tripId, 'spots'));
+  return snap.size;
 }
