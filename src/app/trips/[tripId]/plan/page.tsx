@@ -201,6 +201,17 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
     toast(`Added "${result.name}"!`, 'success');
   }, [selectedDay, groups, addSpot, getDaySpots, toast]);
 
+  const handleReorder = useCallback(async (fromIdx: number, toIdx: number) => {
+    if (selectedDay === null) return;
+    const daySpots = getDaySpots(selectedDay);
+    const reordered = [...daySpots];
+    const [moved] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, moved);
+    await Promise.all(
+      reordered.map((s, i) => s.sortOrder !== i ? updateSpot(s.id, { sortOrder: i }) : Promise.resolve())
+    );
+  }, [selectedDay, getDaySpots, updateSpot]);
+
   const handleSetHotel = useCallback(async (hotel: HotelResult) => {
     if (selectedDay === null) return;
     await updateMeta(selectedDay, { hotelName: hotel.name, hotelLat: hotel.lat, hotelLng: hotel.lng });

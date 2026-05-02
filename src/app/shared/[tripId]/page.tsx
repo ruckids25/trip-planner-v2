@@ -309,7 +309,7 @@ export default function SharedTripPage({
       <div className="flex-1 max-w-6xl w-full mx-auto px-4 py-4 flex gap-4 overflow-hidden" style={{ height: 'calc(100vh - 7rem)' }}>
 
         {/* Spot list — hidden on mobile when map tab is active */}
-        <div className={`w-full md:w-96 md:flex-shrink-0 overflow-y-auto scrollbar-thin ${mobileTab === 'map' ? 'hidden md:block' : 'block'}`}>
+        <div className={"flex-1 md:flex-none md:w-96 md:flex-shrink-0 overflow-y-auto order-2 md:order-1 bg-gray-50"}>
           {daySpots.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-400 text-sm">No spots assigned to this day.</p>
@@ -391,7 +391,7 @@ export default function SharedTripPage({
         </div>
 
         {/* Map — hidden on mobile when list tab is active */}
-        <div className={`flex-1 rounded-xl overflow-hidden border border-gray-200 min-h-[300px] ${mobileTab === 'list' ? 'hidden md:block' : 'block'}`}>
+        <div className={"h-[260px] md:h-auto md:flex-1 flex-shrink-0 order-1 md:order-2 rounded-xl overflow-hidden border border-gray-200"}>
           <PlanMap
             spots={daySpots}
             dayColor={dayColor}
