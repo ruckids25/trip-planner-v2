@@ -15,7 +15,7 @@ import { optimizeRoute } from '@/lib/route-optimizer';
 import { GROUP_COLORS } from '@/types';
 import {
   ChevronLeft, ChevronRight, LayoutGrid, Share2, Wand2,
-  MapPinned, FileText, Hotel, Search, X, Check,
+  MapPinned, FileText, Hotel, Search, X,
 } from 'lucide-react';
 
 function guessAreaFromSpots(daySpots: { address?: string }[]): string {
@@ -62,21 +62,23 @@ function HotelSearchRow({
     return (
       <div className="mb-3">
         {current ? (
-          <div className="flex items-center gap-2.5 px-3 py-2.5 bg-slate-800 rounded-xl">
+          <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
+            style={{ background: 'linear-gradient(135deg, #312e81, #1e40af)' }}>
             <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center text-sm flex-shrink-0">🏨</div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-slate-400 leading-none mb-0.5">จุดเริ่มต้น</p>
+              <p className="text-[10px] text-white/60 leading-none mb-0.5 font-semibold uppercase tracking-wider">จุดเริ่มต้น</p>
               <p className="text-sm font-semibold text-white truncate">{current.name}</p>
             </div>
-            <button onClick={() => setEditing(true)} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0">เปลี่ยน</button>
+            <button onClick={() => setEditing(true)}
+              className="text-xs text-white/70 hover:text-white px-2 py-1 rounded-lg hover:bg-white/10 transition-colors flex-shrink-0">
+              เปลี่ยน
+            </button>
           </div>
         ) : (
-          <button
-            onClick={() => setEditing(true)}
-            className="w-full flex items-center gap-2 px-3 py-2.5 border-2 border-dashed border-gray-200 rounded-xl text-gray-400 hover:text-gray-600 hover:border-gray-300 transition-colors text-sm"
-          >
-            <Hotel size={15} />
-            <span>ระบุโรงแรมจุดเริ่มต้นของวันนี้</span>
+          <button onClick={() => setEditing(true)}
+            className="w-full flex items-center gap-2 px-3 py-2.5 border-2 border-dashed rounded-xl transition-colors text-sm"
+            style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+            <Hotel size={15}/> ระบุโรงแรมจุดเริ่มต้น
           </button>
         )}
       </div>
@@ -84,34 +86,43 @@ function HotelSearchRow({
   }
 
   return (
-    <div className="mb-3 bg-white border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100">
-        <Hotel size={14} className="text-gray-400" />
-        <input
-          autoFocus
-          value={query}
-          onChange={e => setQuery(e.target.value)}
+    <div className="mb-3 bg-white border border-[var(--border)] rounded-xl overflow-hidden"
+      style={{ boxShadow: 'var(--shadow-sm)' }}>
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--border)]">
+        <Hotel size={14} className="text-[var(--text-muted)]"/>
+        <input autoFocus value={query} onChange={e => setQuery(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && search()}
           placeholder="ค้นหาโรงแรม..."
-          className="flex-1 text-sm outline-none placeholder:text-gray-300"
-        />
-        <button onClick={search} disabled={searching} className="p-1 text-blue-500 hover:bg-blue-50 rounded"><Search size={14}/></button>
-        <button onClick={() => { setEditing(false); setResults([]); setQuery(''); }} className="p-1 text-gray-400 hover:bg-gray-100 rounded"><X size={14}/></button>
+          className="flex-1 text-sm outline-none placeholder:text-[var(--text-muted)]"
+          style={{ fontFamily: 'var(--font-body)' }}/>
+        <button onClick={search} disabled={searching}
+          className="p-1 rounded-lg transition-colors"
+          style={{ color: 'var(--accent)' }}>
+          <Search size={14}/>
+        </button>
+        <button onClick={() => { setEditing(false); setResults([]); setQuery(''); }}
+          className="p-1 rounded-lg text-[var(--text-muted)] hover:bg-[var(--bg)] transition-colors">
+          <X size={14}/>
+        </button>
       </div>
       {results.map((r, i) => (
         <button key={i} onClick={() => { onSave(r); setEditing(false); setResults([]); setQuery(''); }}
-          className="w-full flex items-start gap-2 px-3 py-2 hover:bg-blue-50 transition-colors text-left border-b border-gray-50 last:border-0">
+          className="w-full flex items-start gap-2 px-3 py-2.5 transition-colors text-left border-b border-[var(--border)] last:border-0"
+          style={{ background: 'white' }}
+          onMouseEnter={e => (e.currentTarget.style.background = 'var(--accent-light)')}
+          onMouseLeave={e => (e.currentTarget.style.background = 'white')}>
           <span className="text-base mt-0.5">🏨</span>
           <div className="min-w-0">
-            <p className="text-sm font-medium text-gray-800 truncate">{r.name}</p>
-            <p className="text-xs text-gray-400 truncate">{r.address}</p>
+            <p className="text-sm font-semibold text-[var(--text-primary)] truncate">{r.name}</p>
+            <p className="text-xs text-[var(--text-muted)] truncate">{r.address}</p>
           </div>
         </button>
       ))}
-      {searching && <p className="text-xs text-gray-400 text-center py-2">กำลังค้นหา...</p>}
+      {searching && <p className="text-xs text-[var(--text-muted)] text-center py-3">กำลังค้นหา...</p>}
       {current && (
         <button onClick={() => { onClear(); setEditing(false); }}
-          className="w-full text-xs text-red-400 hover:text-red-600 px-3 py-2 hover:bg-red-50 transition-colors text-left border-t border-gray-100">
+          className="w-full text-xs px-3 py-2 transition-colors text-left border-t border-[var(--border)]"
+          style={{ color: 'var(--red)' }}>
           ลบโรงแรม
         </button>
       )}
@@ -171,7 +182,12 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
 
   const handleTimeEdit = useCallback(async (spotId: string, time: string) => {
     await updateSpot(spotId, { timeOverride: time });
-    toast('Time updated', 'success');
+    toast('อัปเดตเวลาแล้ว', 'success');
+  }, [updateSpot, toast]);
+
+  const handleNoteEdit = useCallback(async (spotId: string, note: string) => {
+    await updateSpot(spotId, { note });
+    toast('บันทึกโน้ตแล้ว', 'success');
   }, [updateSpot, toast]);
 
   const handleOptimize = useCallback(async () => {
@@ -181,7 +197,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
     for (let i = 0; i < optimized.length; i++) {
       await updateSpot(optimized[i].id, { sortOrder: i });
     }
-    toast('Route optimized!', 'success');
+    toast('เรียงเส้นทางแล้ว!', 'success');
   }, [selectedDay, getDaySpots, updateSpot, toast]);
 
   const handleAddSpot = useCallback(async (result: {
@@ -198,7 +214,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
       groupId: dayGroups[0]?.id, dayIdx: selectedDay,
       sortOrder: getDaySpots(selectedDay).length,
     });
-    toast(`Added "${result.name}"!`, 'success');
+    toast(`เพิ่ม "${result.name}" แล้ว!`, 'success');
   }, [selectedDay, groups, addSpot, getDaySpots, toast]);
 
   const handleReorder = useCallback(async (fromIdx: number, toIdx: number) => {
@@ -228,18 +244,28 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
   // ─── Overview mode ───
   if (selectedDay === null) {
     return (
-      <div className="max-w-5xl mx-auto px-4 py-8">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-xl font-bold text-gray-900">{trip.title}</h2>
-            <p className="text-sm text-gray-500">{trip.startDate} — {trip.endDate}</p>
+      <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
+        {/* Header */}
+        <div className="bg-white border-b border-[var(--border)] px-4 py-3 sticky top-0 z-10"
+          style={{ boxShadow: 'var(--shadow-sm)' }}>
+          <div className="max-w-2xl mx-auto flex items-center justify-between">
+            <div>
+              <p className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">แผนทริป</p>
+              <h2 className="text-base font-bold text-[var(--text-primary)]"
+                style={{ fontFamily: 'var(--font-head)' }}>
+                {trip.title}
+              </h2>
+            </div>
+            <button onClick={() => setShowShare(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold transition-colors"
+              style={{ background: 'var(--accent-light)', color: 'var(--accent)' }}>
+              <Share2 size={15}/> แชร์
+            </button>
           </div>
-          <button onClick={() => setShowShare(true)}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-xl hover:bg-gray-200 transition-colors text-sm font-medium text-gray-700">
-            <Share2 size={16}/> Share
-          </button>
         </div>
-        <Overview trip={trip} spots={spots} groups={groups} dayMetas={dayMetas} onDaySelect={setSelectedDay}/>
+        <div className="max-w-2xl mx-auto px-4 py-5 pb-24">
+          <Overview trip={trip} spots={spots} groups={groups} dayMetas={dayMetas} onDaySelect={setSelectedDay}/>
+        </div>
         <ShareModal trip={trip} open={showShare} onClose={() => setShowShare(false)}/>
       </div>
     );
@@ -252,47 +278,77 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
   dayDate.setDate(dayDate.getDate() + selectedDay);
   const meta = getMeta(selectedDay);
   const hotel = meta?.hotelLat ? { name: meta.hotelName!, lat: meta.hotelLat, lng: meta.hotelLng! } : undefined;
-  const dayOfWeek = ['SUN','MON','TUE','WED','THU','FRI','SAT'][dayDate.getDay()];
-  const dateStr = `DAY ${selectedDay + 1} · ${dayDate.getDate()} ${['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'][dayDate.getMonth()]} ${dayOfWeek}`;
+  const MONTHS = ['JAN','FEB','MAR','APR','MAY','JUN','JUL','AUG','SEP','OCT','NOV','DEC'];
+  const DOWS = ['SUN','MON','TUE','WED','THU','FRI','SAT'];
+  const dateStr = `DAY ${selectedDay + 1} · ${dayDate.getDate()} ${MONTHS[dayDate.getMonth()]} ${DOWS[dayDate.getDay()]}`;
 
   return (
-    <div className="flex flex-col bg-gray-50" style={{ height: 'calc(100vh - 4rem)' }}>
+    <div className="flex flex-col" style={{ height: 'calc(100dvh)', background: 'var(--bg)' }}>
 
       {/* ── Day header ── */}
-      <div className="bg-white border-b border-gray-100 px-4 py-3 flex-shrink-0">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button onClick={() => { saveMeta(); setSelectedDay(null); }}
-              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors">
-              <LayoutGrid size={18} className="text-gray-500"/>
-            </button>
-            <button onClick={() => { saveMeta(); setSelectedDay(Math.max(0, selectedDay - 1)); }}
-              disabled={selectedDay === 0} className="p-1 hover:bg-gray-100 rounded disabled:opacity-30">
-              <ChevronLeft size={18} className="text-gray-500"/>
-            </button>
-            <div>
-              <p className="text-[10px] font-bold tracking-widest text-gray-400">{dateStr}</p>
-              <div className="flex items-center gap-1.5">
-                {editArea ? (
-                  <h3 className="font-bold text-gray-900 text-sm leading-tight">{editArea}</h3>
-                ) : (
-                  <h3 className="text-sm font-bold text-gray-900">{daySpots.length} spots</h3>
-                )}
+      <div className="bg-white border-b border-[var(--border)] px-4 pt-3 pb-0 flex-shrink-0"
+        style={{ boxShadow: 'var(--shadow-sm)' }}>
+        <div className="max-w-6xl mx-auto">
+          <div className="flex items-center justify-between mb-2">
+            {/* Left: back + prev/next + title */}
+            <div className="flex items-center gap-1.5">
+              <button onClick={() => { saveMeta(); setSelectedDay(null); }}
+                className="p-1.5 hover:bg-[var(--bg)] rounded-xl transition-colors">
+                <LayoutGrid size={18} style={{ color: 'var(--text-muted)' }}/>
+              </button>
+              <button onClick={() => { saveMeta(); setSelectedDay(Math.max(0, selectedDay - 1)); }}
+                disabled={selectedDay === 0}
+                className="p-1.5 hover:bg-[var(--bg)] rounded-xl transition-colors disabled:opacity-30">
+                <ChevronLeft size={18} style={{ color: 'var(--text-muted)' }}/>
+              </button>
+              <div>
+                <p className="text-[9px] font-bold tracking-widest" style={{ color: 'var(--text-muted)' }}>
+                  {dateStr}
+                </p>
+                <h3 className="font-bold text-sm text-[var(--text-primary)] leading-tight"
+                  style={{ fontFamily: 'var(--font-head)' }}>
+                  {editArea || `${daySpots.length} สถานที่`}
+                </h3>
               </div>
+              <button onClick={() => { saveMeta(); setSelectedDay(Math.min(totalDays - 1, selectedDay + 1)); }}
+                disabled={selectedDay >= totalDays - 1}
+                className="p-1.5 hover:bg-[var(--bg)] rounded-xl transition-colors disabled:opacity-30">
+                <ChevronRight size={18} style={{ color: 'var(--text-muted)' }}/>
+              </button>
             </div>
-            <button onClick={() => { saveMeta(); setSelectedDay(Math.min(totalDays - 1, selectedDay + 1)); }}
-              disabled={selectedDay >= totalDays - 1} className="p-1 hover:bg-gray-100 rounded disabled:opacity-30">
-              <ChevronRight size={18} className="text-gray-500"/>
-            </button>
+
+            {/* Right: optimize + share */}
+            <div className="flex items-center gap-1.5">
+              <button onClick={handleOptimize} disabled={daySpots.length < 2}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-40 transition-colors"
+                style={{ background: '#EDE9FE', color: '#7C3AED' }}>
+                <Wand2 size={13}/> เรียงเส้นทาง
+              </button>
+              <button onClick={() => setShowShare(true)}
+                className="p-2 hover:bg-[var(--bg)] rounded-xl transition-colors"
+                style={{ color: 'var(--text-muted)' }}>
+                <Share2 size={16}/>
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5">
-            <button onClick={handleOptimize} disabled={daySpots.length < 2}
-              className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-purple-50 text-purple-600 rounded-lg hover:bg-purple-100 text-xs font-medium disabled:opacity-40">
-              <Wand2 size={14}/> Optimize
-            </button>
-            <button onClick={() => setShowShare(true)} className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-400">
-              <Share2 size={16}/>
-            </button>
+
+          {/* Day dot navigation */}
+          <div className="flex items-center gap-1.5 pb-3 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
+            {Array.from({ length: totalDays }, (_, i) => (
+              <button
+                key={i}
+                onClick={() => { saveMeta(); setSelectedDay(i); }}
+                className="day-nav-dot transition-all flex-shrink-0"
+                style={{
+                  width: i === selectedDay ? 20 : 7,
+                  background: i === selectedDay ? dayColor : 'var(--border)',
+                  cursor: 'pointer',
+                  border: 'none',
+                  padding: 0,
+                }}
+                title={`Day ${i + 1}`}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -300,8 +356,8 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
       {/* ── Main content: map-on-top mobile, side-by-side desktop ── */}
       <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
 
-        {/* MAP — top on mobile (fixed height), right panel on desktop */}
-        <div className="h-[260px] md:h-auto md:flex-1 flex-shrink-0 order-1 md:order-2 relative">
+        {/* MAP — top on mobile, right on desktop */}
+        <div className="h-[220px] md:h-auto md:flex-1 flex-shrink-0 order-1 md:order-2 relative">
           <PlanMap
             spots={daySpots}
             dayColor={dayColor}
@@ -310,71 +366,71 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
             selectedSpotId={selectedSpotId}
             onSpotSelect={setSelectedSpotId}
           />
-          {/* Optimize button floating on map - mobile only */}
           {daySpots.length >= 2 && (
             <button onClick={handleOptimize}
-              className="sm:hidden absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 bg-white shadow-md text-purple-600 rounded-xl text-xs font-semibold border border-purple-100">
+              className="sm:hidden absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 bg-white rounded-xl text-xs font-semibold border"
+              style={{ color: '#7C3AED', borderColor: '#DDD6FE', boxShadow: 'var(--shadow-md)' }}>
               <Wand2 size={13}/> เรียงเส้นทาง
             </button>
           )}
         </div>
 
-        {/* LIST PANEL — scrollable bottom on mobile, left panel on desktop */}
-        <div className="flex-1 md:flex-none md:w-96 md:flex-shrink-0 overflow-y-auto order-2 md:order-1 bg-gray-50">
+        {/* LIST PANEL — scrollable */}
+        <div className="flex-1 md:flex-none md:w-96 md:flex-shrink-0 overflow-y-auto order-2 md:order-1"
+          style={{ background: 'var(--bg)' }}>
           <div className="px-4 pt-4 pb-2 space-y-3">
 
-            {/* Hotel row */}
-            <HotelSearchRow
-              current={hotel}
-              country={trip.country}
-              onSave={handleSetHotel}
-              onClear={handleClearHotel}
-            />
-
-            {/* Search */}
+            <HotelSearchRow current={hotel} country={trip.country} onSave={handleSetHotel} onClear={handleClearHotel}/>
             <PlaceSearch country={trip.country} onAdd={handleAddSpot}/>
 
-            {/* Itinerary header */}
             <div className="flex items-center justify-between pt-1">
-              <span className="text-xs font-bold tracking-widest text-gray-500">ITINERARY</span>
-              <span className="text-xs text-gray-400">ลากเพื่อจัดลำดับใหม่</span>
+              <span className="section-label">ITINERARY</span>
+              <span className="text-xs" style={{ color: 'var(--text-muted)' }}>ลากเพื่อจัดลำดับ</span>
             </div>
 
-            {/* Area + description (collapsible on mobile) */}
+            {/* Area + description */}
             <div className="space-y-1.5">
               <div className="flex items-center gap-2">
-                <MapPinned size={13} className="text-blue-500 flex-shrink-0"/>
+                <MapPinned size={13} style={{ color: 'var(--accent)', flexShrink: 0 }}/>
                 <input type="text" value={editArea}
                   onChange={e => { setEditArea(e.target.value); setMetaDirty(true); }}
                   onBlur={saveMeta}
                   placeholder="ย่าน / Area"
-                  className="flex-1 text-xs text-blue-600 bg-blue-50/50 border border-blue-100 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-blue-300 outline-none placeholder:text-blue-200"/>
+                  className="flex-1 text-xs rounded-xl px-2.5 py-1.5 outline-none transition-colors"
+                  style={{
+                    background: 'var(--accent-light)', border: '1px solid #C7D2FE',
+                    color: 'var(--accent)', fontFamily: 'var(--font-body)',
+                  }}/>
               </div>
               <div className="flex items-start gap-2">
-                <FileText size={13} className="text-gray-300 flex-shrink-0 mt-1.5"/>
+                <FileText size={13} style={{ color: 'var(--text-muted)', flexShrink: 0, marginTop: 6 }}/>
                 <textarea value={editDesc}
                   onChange={e => { setEditDesc(e.target.value); setMetaDirty(true); }}
                   onBlur={saveMeta}
                   placeholder="โน้ตสำหรับวันนี้..."
                   rows={2}
-                  className="flex-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-lg px-2.5 py-1.5 focus:ring-1 focus:ring-gray-300 outline-none placeholder:text-gray-300 resize-none"/>
+                  className="flex-1 text-xs rounded-xl px-2.5 py-1.5 outline-none resize-none transition-colors"
+                  style={{
+                    background: 'var(--bg)', border: '1px solid var(--border)',
+                    color: 'var(--text-secondary)', fontFamily: 'var(--font-body)',
+                  }}/>
               </div>
             </div>
           </div>
 
-          {/* Spot count badge */}
-          <div className="px-4 pb-2 flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-400">· {daySpots.length} จุด</span>
+          <div className="px-4 pb-1">
+            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>· {daySpots.length} จุด</span>
           </div>
 
-          {/* Timeline */}
           <div className="px-4 pb-6">
             <Timeline
               spots={daySpots}
               dayColor={dayColor}
               onToggleCheck={handleToggleCheck}
               onTimeEdit={handleTimeEdit}
+              onNoteEdit={handleNoteEdit}
               onDelete={(id) => removeSpot(id)}
+              onReorder={handleReorder}
             />
           </div>
         </div>

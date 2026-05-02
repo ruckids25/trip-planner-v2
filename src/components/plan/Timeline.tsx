@@ -9,25 +9,28 @@ interface TimelineProps {
   dayColor: string;
   onToggleCheck: (spotId: string) => void;
   onTimeEdit: (spotId: string, time: string) => void;
+  onNoteEdit?: (spotId: string, note: string) => void;
   onDelete?: (spotId: string) => void;
   onReorder?: (fromIdx: number, toIdx: number) => void;
 }
 
-export default function Timeline({ spots, dayColor, onToggleCheck, onTimeEdit, onDelete, onReorder }: TimelineProps) {
+export default function Timeline({
+  spots, dayColor, onToggleCheck, onTimeEdit, onNoteEdit, onDelete, onReorder,
+}: TimelineProps) {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
 
   if (spots.length === 0) {
     return (
       <div className="text-center py-12">
-        <p className="text-gray-400 text-sm">No spots assigned to this day yet.</p>
-        <p className="text-gray-300 text-xs mt-1">Go to Calendar to assign groups.</p>
+        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>ยังไม่มีสถานที่ในวันนี้</p>
+        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>ค้นหาหรือเพิ่มสถานที่ด้านบน</p>
       </div>
     );
   }
 
   return (
-    <div className="pl-8">
+    <div>
       {spots.map((spot, i) => (
         <div
           key={spot.id}
@@ -39,11 +42,8 @@ export default function Timeline({ spots, dayColor, onToggleCheck, onTimeEdit, o
             setOverIdx(null);
           }}
           className={`transition-all duration-150 ${
-            overIdx === i && dragIdx !== i
-              ? 'opacity-40 scale-[0.97]'
-              : dragIdx === i
-              ? 'opacity-60'
-              : ''
+            overIdx === i && dragIdx !== i ? 'opacity-40 scale-[0.97]'
+            : dragIdx === i ? 'opacity-60' : ''
           }`}
         >
           <SpotCard
@@ -52,6 +52,7 @@ export default function Timeline({ spots, dayColor, onToggleCheck, onTimeEdit, o
             dayColor={dayColor}
             onToggleCheck={onToggleCheck}
             onTimeEdit={onTimeEdit}
+            onNoteEdit={onNoteEdit}
             onDelete={onDelete}
             draggable={!!onReorder}
             onDragStart={() => setDragIdx(i)}

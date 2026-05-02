@@ -2,7 +2,8 @@
 
 import { Trip, Spot, Group, DayMeta, SPOT_TYPE_CONFIG } from '@/types';
 import { calculateTotalDistance } from '@/lib/route-optimizer';
-import { MapPin, Check, Route, Calendar, MapPinned } from 'lucide-react';
+import { MapPin, Check, Route, Calendar, Hotel, ChevronRight } from 'lucide-react';
+import { GROUP_COLORS } from '@/types';
 
 interface OverviewProps {
   trip: Trip;
@@ -14,28 +15,21 @@ interface OverviewProps {
 
 function guessArea(daySpots: Spot[]): string {
   if (daySpots.length === 0) return '';
-  // Extract area names from addresses
   const areas = daySpots
-    .map(s => s.address || '')
-    .filter(Boolean)
+    .map(s => s.address || '').filter(Boolean)
     .map(addr => {
-      // Try to extract district/ward from address (works for Japanese + Thai addresses)
       const parts = addr.split(',').map(p => p.trim());
-      // Return 2nd or 3rd part which is usually the district/area
       return parts.length >= 3 ? parts[parts.length - 3] : parts.length >= 2 ? parts[parts.length - 2] : parts[0];
-    })
-    .filter(Boolean);
-
-  // Find most common area
+    }).filter(Boolean);
   const freq: Record<string, number> = {};
   areas.forEach(a => { freq[a] = (freq[a] || 0) + 1; });
   const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
-
-  // Return top 1-2 areas
   if (sorted.length === 0) return '';
-  if (sorted.length === 1) return sorted[0][0];
-  return `${sorted[0][0]}, ${sorted[1][0]}`;
+  return sorted.length === 1 ? sorted[0][0] : `${sorted[0][0]}, ${sorted[1][0]}`;
 }
+
+const DAYS_OF_WEEK_TH = ['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.'];
+const MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
 
 export default function Overview({ trip, spots, groups, dayMetas, onDaySelect }: OverviewProps) {
   const startDate = new Date(trip.startDate);
@@ -48,97 +42,114 @@ export default function Overview({ trip, spots, groups, dayMetas, onDaySelect }:
   const days = Array.from({ length: totalDays }, (_, i) => {
     const date = new Date(startDate);
     date.setDate(date.getDate() + i);
-
     const dayGroups = groups.filter(g => g.assignedDay === i);
     const daySpotIds = dayGroups.flatMap(g => g.spotIds);
     const daySpots = spots.filter(s => daySpotIds.includes(s.id));
     const dayChecked = daySpots.filter(s => s.checked).length;
-
     const meta = dayMetas.find(m => m.dayIdx === i);
     const area = meta?.area || guessArea(daySpots);
-    const description = meta?.description || '';
-
-    return { date, dayIdx: i, spots: daySpots, checked: dayChecked, groups: dayGroups, area, description };
+    return { date, dayIdx: i, spots: daySpots, checked: dayChecked, groups: dayGroups, area, meta };
   });
 
   return (
-    <div className="space-y-6">
-      {/* Day cards */}
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+    <div className="space-y-5">
+
+      {/* ── Stats grid ── */}
+      <div className="grid grid-cols-4 gap-2.5">
+        {[
+          { icon: <Calendar size={16}/>, label: 'วัน', value: totalDays, bg: '#EEF2FF', color: '#4F46E5' },
+          { icon: <MapPin size={16}/>, label: 'สถานที่', value: spots.length, bg: '#F0FDF4', color: '#059669' },
+          { icon: <Check size={16}/>, label: 'เยี่ยมแล้ว', value: checkedCount, bg: '#FEF3C7', color: '#D97706' },
+          { icon: <Route size={16}/>, label: 'กม.', value: `${totalDistance.toFixed(0)}`, bg: '#FEE2E2', color: '#DC2626' },
+        ].map(s => (
+          <div key={s.label} className="bg-white rounded-2xl p-3 text-center border border-[var(--border)]"
+            style={{ boxShadow: 'var(--shadow-sm)' }}>
+            <div className="w-8 h-8 rounded-xl mx-auto flex items-center justify-center mb-1.5"
+              style={{ background: s.bg, color: s.color }}>
+              {s.icon}
+            </div>
+            <p className="text-base font-bold text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-head)' }}>{s.value}</p>
+            <p className="text-[10px] text-[var(--text-muted)]">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Day cards ── */}
+      <div className="space-y-3">
         {days.map(day => {
+          const color = GROUP_COLORS[day.dayIdx % GROUP_COLORS.length];
           const progress = day.spots.length > 0 ? (day.checked / day.spots.length) * 100 : 0;
-          const dayOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day.date.getDay()];
+          const dowTh = DAYS_OF_WEEK_TH[day.date.getDay()];
+          const dateTh = `${dowTh} ${day.date.getDate()} ${MONTHS_SHORT[day.date.getMonth()]}`;
+
+          // Get unique spot types for chips
+          const typeChips = [...new Set(day.spots.map(s => s.type))].slice(0, 3);
 
           return (
             <div
               key={day.dayIdx}
-              className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md transition-all cursor-pointer"
               onClick={() => onDaySelect(day.dayIdx)}
+              className="bg-white rounded-2xl border border-[var(--border)] overflow-hidden cursor-pointer hover:shadow-md transition-all relative"
+              style={{ boxShadow: 'var(--shadow-sm)' }}
             >
-              <div className="flex items-center justify-between mb-1">
-                <div>
-                  <span className="text-sm font-bold text-gray-900">Day {day.dayIdx + 1}</span>
-                  <span className="text-xs text-gray-400 ml-2">{dayOfWeek} {day.date.getDate()}/{day.date.getMonth() + 1}</span>
+              {/* Top color bar */}
+              <div className="h-1.5 w-full" style={{ background: color }}/>
+
+              <div className="p-4">
+                <div className="flex items-start justify-between mb-2">
+                  <div>
+                    <div className="flex items-center gap-2 mb-0.5">
+                      <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+                        วันที่ {day.dayIdx + 1}
+                      </span>
+                      <span className="text-xs text-[var(--text-muted)]">{dateTh}</span>
+                    </div>
+                    <h3 className="font-bold text-[var(--text-primary)] leading-tight"
+                      style={{ fontFamily: 'var(--font-head)', fontSize: 15 }}>
+                      {day.area || `Day ${day.dayIdx + 1}`}
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                      style={{ background: `${color}18`, color }}>
+                      {day.checked}/{day.spots.length} จุด
+                    </span>
+                    <ChevronRight size={16} className="text-[var(--text-muted)]"/>
+                  </div>
                 </div>
-                <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                  {day.checked}/{day.spots.length}
-                </span>
-              </div>
 
-              {/* Area label */}
-              {day.area && (
-                <p className="text-xs text-blue-500 flex items-center gap-1 mb-2">
-                  <MapPinned size={11} /> {day.area}
-                </p>
-              )}
+                {/* Progress bar */}
+                <div className="progress-bar mb-3">
+                  <div className="progress-fill" style={{ width: `${progress}%`, background: color }}/>
+                </div>
 
-              {/* Description */}
-              {day.description && (
-                <p className="text-xs text-gray-400 mb-2 line-clamp-2">{day.description}</p>
-              )}
+                {/* Spot type chips */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  {typeChips.map(type => {
+                    const tc = SPOT_TYPE_CONFIG[type] || SPOT_TYPE_CONFIG.other;
+                    return (
+                      <span key={type} className="type-chip"
+                        style={{ background: `${tc.color}18`, color: tc.color }}>
+                        {tc.emoji} {tc.label}
+                      </span>
+                    );
+                  })}
+                  {day.spots.length === 0 && (
+                    <span className="text-xs text-[var(--text-muted)]">ยังไม่มีสถานที่</span>
+                  )}
+                </div>
 
-              {/* Progress bar */}
-              <div className="w-full h-1.5 bg-gray-100 rounded-full mb-3 overflow-hidden">
-                <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${progress}%` }} />
-              </div>
-
-              {/* Group chips */}
-              <div className="flex flex-wrap gap-1">
-                {day.groups.map(g => (
-                  <span
-                    key={g.id}
-                    className="text-xs text-white px-2 py-0.5 rounded-full"
-                    style={{ background: g.color }}
-                  >
-                    {g.label}
-                  </span>
-                ))}
-                {day.groups.length === 0 && (
-                  <span className="text-xs text-gray-400">No groups assigned</span>
+                {/* Hotel row */}
+                {day.meta?.hotelName && (
+                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--border)]">
+                    <Hotel size={13} className="text-[var(--text-muted)] flex-shrink-0"/>
+                    <span className="text-xs text-[var(--text-secondary)] truncate">{day.meta.hotelName}</span>
+                  </div>
                 )}
               </div>
             </div>
           );
         })}
-      </div>
-
-      {/* Trip Summary — below last day */}
-      <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl border border-blue-100 p-5">
-        <h3 className="text-sm font-semibold text-gray-700 mb-3">Trip Summary</h3>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          {[
-            { icon: <Calendar size={18} />, label: 'Days', value: totalDays, bgColor: 'bg-blue-100', textColor: 'text-blue-600' },
-            { icon: <MapPin size={18} />, label: 'Places', value: spots.length, bgColor: 'bg-purple-100', textColor: 'text-purple-600' },
-            { icon: <Check size={18} />, label: 'Visited', value: `${checkedCount}/${spots.length}`, bgColor: 'bg-green-100', textColor: 'text-green-600' },
-            { icon: <Route size={18} />, label: 'Distance', value: `${totalDistance.toFixed(1)} km`, bgColor: 'bg-orange-100', textColor: 'text-orange-600' },
-          ].map(stat => (
-            <div key={stat.label} className="bg-white/80 rounded-xl p-3 text-center">
-              <div className={`w-8 h-8 mx-auto rounded-lg ${stat.bgColor} ${stat.textColor} flex items-center justify-center mb-2`}>{stat.icon}</div>
-              <p className="text-lg font-bold text-gray-900">{stat.value}</p>
-              <p className="text-xs text-gray-500">{stat.label}</p>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
