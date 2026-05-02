@@ -7,7 +7,7 @@ import { calculateTotalDistance } from '@/lib/route-optimizer';
 import PlanMap from '@/components/plan/PlanMap';
 import {
   MapPin, Check, Route, Calendar, MapPinned, ChevronLeft, ChevronRight,
-  LayoutGrid, Clock, ExternalLink, Map, List, Pencil,
+  LayoutGrid, Clock, ExternalLink, Pencil,
 } from 'lucide-react';
 
 // ─── Read-only (or editable) shared trip page — no auth required ───
@@ -32,7 +32,7 @@ export default function SharedTripPage({
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [selectedSpotId, setSelectedSpotId] = useState<string>();
   // Mobile: toggle between list and map tabs
-  const [mobileTab, setMobileTab] = useState<'list' | 'map'>('list');
+
 
   useEffect(() => {
     async function load() {
@@ -192,7 +192,7 @@ export default function SharedTripPage({
                 <div
                   key={day.dayIdx}
                   className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md transition-all cursor-pointer"
-                  onClick={() => { setSelectedDay(day.dayIdx); setMobileTab('list'); }}
+                  onClick={() => { setSelectedDay(day.dayIdx); }}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div>
@@ -305,31 +305,6 @@ export default function SharedTripPage({
           </div>
         </div>
       </div>
-
-      {/* Mobile tab toggle */}
-      <div className="md:hidden flex items-center bg-white border-b border-gray-100 px-4 gap-1 flex-shrink-0">
-        <button
-          onClick={() => setMobileTab('list')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            mobileTab === 'list'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          <List size={15} /> Spots
-        </button>
-        <button
-          onClick={() => setMobileTab('map')}
-          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
-            mobileTab === 'map'
-              ? 'border-blue-500 text-blue-600'
-              : 'border-transparent text-gray-400 hover:text-gray-600'
-          }`}
-        >
-          <Map size={15} /> Map
-        </button>
-      </div>
-
       {/* Content */}
       <div className="flex-1 max-w-6xl w-full mx-auto px-4 py-4 flex gap-4 overflow-hidden" style={{ height: 'calc(100vh - 7rem)' }}>
 
@@ -344,7 +319,7 @@ export default function SharedTripPage({
               {daySpots.map((spot, i) => (
                 <div
                   key={spot.id}
-                  onClick={() => { setSelectedSpotId(spot.id); if (window.innerWidth < 768) setMobileTab('map'); }}
+                  onClick={() => { setSelectedSpotId(spot.id);  }}
                   className={`bg-white rounded-xl border p-3 cursor-pointer transition-all ${
                     selectedSpotId === spot.id ? 'border-blue-300 shadow-md' : 'border-gray-100 hover:shadow-sm'
                   }`}

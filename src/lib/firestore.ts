@@ -185,7 +185,10 @@ export async function getDayMetas(tripId: string): Promise<DayMeta[]> {
   return snap.docs.map(d => ({ id: d.id, ...d.data() } as DayMeta));
 }
 
-export async function saveDayMeta(tripId: string, dayIdx: number, data: { area: string; description: string }): Promise<void> {
+export async function saveDayMeta(tripId: string, dayIdx: number, data: {
+  area?: string; description?: string;
+  hotelName?: string; hotelLat?: number; hotelLng?: number;
+}): Promise<void> {
   const docId = `day-${dayIdx}`;
   await setDoc(doc(db, 'trips', tripId, 'dayMeta', docId), {
     dayIdx,

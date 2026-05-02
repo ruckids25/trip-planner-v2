@@ -84,6 +84,9 @@ export interface DayMeta {
   dayIdx: number;
   area: string;
   description: string;
+  hotelName?: string;
+  hotelLat?: number;
+  hotelLng?: number;
 }
 
 export interface ApiUsageLog {

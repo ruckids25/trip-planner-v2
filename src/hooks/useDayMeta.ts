@@ -16,7 +16,10 @@ export function useDayMeta(tripId: string) {
     return dayMetas.find(m => m.dayIdx === dayIdx);
   }, [dayMetas]);
 
-  const updateMeta = useCallback(async (dayIdx: number, data: { area: string; description: string }) => {
+  const updateMeta = useCallback(async (dayIdx: number, data: {
+    area?: string; description?: string;
+    hotelName?: string; hotelLat?: number; hotelLng?: number;
+  }) => {
     await saveDayMeta(tripId, dayIdx, data);
   }, [tripId]);
 
