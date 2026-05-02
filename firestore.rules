@@ -2,18 +2,15 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Helper: check if user is admin
     function isAdmin() {
       return request.auth != null && request.auth.token.email == 'ruckids@gmail.com';
     }
 
-    // Users: read by authenticated, write by owner, admin reads all
     match /users/{uid} {
       allow read: if request.auth != null;
       allow write: if request.auth.uid == uid;
     }
 
-    // Trips: owner + collaborators + admin reads all + shared public read
     match /trips/{tripId} {
       allow read: if resource.data.isShared == true;
       allow read: if request.auth != null &&
@@ -24,10 +21,14 @@ service cloud.firestore {
       allow update, delete: if request.auth != null &&
         resource.data.ownerId == request.auth.uid;
 
-      // Spots & Groups: inherit from parent trip + admin reads + shared public read
       match /{subcol}/{docId} {
+        // Public read when trip is shared
         allow read: if get(/databases/$(database)/documents/trips/$(tripId))
           .data.isShared == true;
+        // Public write (spots/groups/dayMetas) when trip is shared — enables edit-link mode
+        allow write: if get(/databases/$(database)/documents/trips/$(tripId))
+          .data.isShared == true;
+        // Owner / collaborator full access
         allow read, write: if request.auth != null &&
           (get(/databases/$(database)/documents/trips/$(tripId))
             .data.ownerId == request.auth.uid ||
@@ -38,7 +39,6 @@ service cloud.firestore {
       }
     }
 
-    // API Usage logs: any authenticated user can write, admin can read all
     match /apiUsage/{logId} {
       allow create: if request.auth != null;
       allow read: if isAdmin();

@@ -2,18 +2,26 @@
 
 import { useState, useCallback, useMemo, useEffect, use } from 'react';
 import { Trip, Spot, Group, DayMeta, SPOT_TYPE_CONFIG, GROUP_COLORS } from '@/types';
-import { getTrip, getSpots, getGroups, getDayMetas } from '@/lib/firestore';
+import { getTrip, getSpots, getGroups, getDayMetas, updateSpot } from '@/lib/firestore';
 import { calculateTotalDistance } from '@/lib/route-optimizer';
 import PlanMap from '@/components/plan/PlanMap';
 import {
   MapPin, Check, Route, Calendar, MapPinned, ChevronLeft, ChevronRight,
-  LayoutGrid, Clock, ExternalLink,
+  LayoutGrid, Clock, ExternalLink, Map, List, Pencil,
 } from 'lucide-react';
 
-// ─── Read-only shared trip page (no auth required) ───
+// ─── Read-only (or editable) shared trip page — no auth required ───
 
-export default function SharedTripPage({ params }: { params: Promise<{ tripId: string }> }) {
+export default function SharedTripPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ tripId: string }>;
+  searchParams: Promise<{ mode?: string }>;
+}) {
   const { tripId } = use(params);
+  const { mode } = use(searchParams);
+  const isEditMode = mode === 'edit';
 
   const [trip, setTrip] = useState<Trip | null>(null);
   const [spots, setSpots] = useState<Spot[]>([]);
@@ -23,8 +31,9 @@ export default function SharedTripPage({ params }: { params: Promise<{ tripId: s
   const [error, setError] = useState('');
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [selectedSpotId, setSelectedSpotId] = useState<string>();
+  // Mobile: toggle between list and map tabs
+  const [mobileTab, setMobileTab] = useState<'list' | 'map'>('list');
 
-  // Fetch all data on mount (one-time reads, no real-time subscription needed)
   useEffect(() => {
     async function load() {
       try {
@@ -66,7 +75,33 @@ export default function SharedTripPage({ params }: { params: Promise<{ tripId: s
 
   const getDayColor = (dayIdx: number) => GROUP_COLORS[dayIdx % GROUP_COLORS.length];
 
-  // ─── Loading / Error states ───
+  // Edit mode: toggle check
+  const handleToggleCheck = useCallback(async (spotId: string) => {
+    if (!isEditMode) return;
+    const spot = spots.find(s => s.id === spotId);
+    if (!spot) return;
+    const newChecked = !spot.checked;
+    setSpots(prev => prev.map(s => s.id === spotId ? { ...s, checked: newChecked } : s));
+    try {
+      await updateSpot(tripId, spotId, { checked: newChecked });
+    } catch (e) {
+      // revert on failure
+      setSpots(prev => prev.map(s => s.id === spotId ? { ...s, checked: !newChecked } : s));
+    }
+  }, [isEditMode, spots, tripId]);
+
+  // Edit mode: update time
+  const handleTimeEdit = useCallback(async (spotId: string, time: string) => {
+    if (!isEditMode) return;
+    setSpots(prev => prev.map(s => s.id === spotId ? { ...s, timeOverride: time } : s));
+    try {
+      await updateSpot(tripId, spotId, { timeOverride: time });
+    } catch (e) {
+      console.error('Failed to update time', e);
+    }
+  }, [isEditMode, tripId]);
+
+  // ─── Loading / Error ───
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
@@ -92,7 +127,7 @@ export default function SharedTripPage({ params }: { params: Promise<{ tripId: s
     );
   }
 
-  // ─── Helper: guess area from spots ───
+  // ─── Area guesser ───
   function guessArea(daySpots: Spot[]): string {
     if (daySpots.length === 0) return '';
     const areas = daySpots
@@ -133,14 +168,22 @@ export default function SharedTripPage({ params }: { params: Promise<{ tripId: s
         {/* Header */}
         <div className="bg-white border-b border-gray-100 px-4 py-4">
           <div className="max-w-5xl mx-auto">
-            <p className="text-xs text-blue-500 font-medium mb-1">Shared Trip Plan</p>
-            <h1 className="text-xl font-bold text-gray-900">{trip.title}</h1>
-            <p className="text-sm text-gray-500">{trip.country} · {trip.startDate} — {trip.endDate}</p>
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs text-blue-500 font-medium mb-1">Shared Trip Plan</p>
+                <h1 className="text-xl font-bold text-gray-900">{trip.title}</h1>
+                <p className="text-sm text-gray-500">{trip.country} · {trip.startDate} — {trip.endDate}</p>
+              </div>
+              {isEditMode && (
+                <span className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-xs font-semibold border border-orange-200">
+                  <Pencil size={12} /> Edit Mode
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
         <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-          {/* Day cards */}
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {days.map(day => {
               const progress = day.spots.length > 0 ? (day.checked / day.spots.length) * 100 : 0;
@@ -149,7 +192,7 @@ export default function SharedTripPage({ params }: { params: Promise<{ tripId: s
                 <div
                   key={day.dayIdx}
                   className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md transition-all cursor-pointer"
-                  onClick={() => setSelectedDay(day.dayIdx)}
+                  onClick={() => { setSelectedDay(day.dayIdx); setMobileTab('list'); }}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <div>
@@ -206,7 +249,7 @@ export default function SharedTripPage({ params }: { params: Promise<{ tripId: s
     );
   }
 
-  // ─── Day detail view (read-only) ───
+  // ─── Day detail view ───
   const daySpots = getDaySpots(selectedDay);
   const dayColor = getDayColor(selectedDay);
   const dayDate = new Date(trip.startDate);
@@ -215,9 +258,9 @@ export default function SharedTripPage({ params }: { params: Promise<{ tripId: s
   const area = meta?.area || guessArea(daySpots);
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Day header */}
-      <div className="bg-white border-b border-gray-100 px-4 py-3">
+      <div className="bg-white border-b border-gray-100 px-4 py-3 flex-shrink-0">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
@@ -248,57 +291,123 @@ export default function SharedTripPage({ params }: { params: Promise<{ tripId: s
               <ChevronRight size={18} className="text-gray-500" />
             </button>
           </div>
-          {area && (
-            <p className="text-xs text-blue-500 flex items-center gap-1">
-              <MapPinned size={12} /> {area}
-            </p>
-          )}
+          <div className="flex items-center gap-2">
+            {area && (
+              <p className="hidden sm:flex text-xs text-blue-500 items-center gap-1">
+                <MapPinned size={12} /> {area}
+              </p>
+            )}
+            {isEditMode && (
+              <span className="flex items-center gap-1 px-2 py-1 bg-orange-50 text-orange-600 rounded-lg text-xs font-semibold border border-orange-200">
+                <Pencil size={11} /> Editing
+              </span>
+            )}
+          </div>
         </div>
       </div>
 
-      {/* Content: Timeline (read-only) + Map */}
-      <div className="max-w-6xl mx-auto px-4 py-4 flex gap-4" style={{ height: 'calc(100vh - 4rem)' }}>
-        {/* Read-only spot list */}
-        <div className="w-96 flex-shrink-0 overflow-y-auto scrollbar-thin">
+      {/* Mobile tab toggle */}
+      <div className="md:hidden flex items-center bg-white border-b border-gray-100 px-4 gap-1 flex-shrink-0">
+        <button
+          onClick={() => setMobileTab('list')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            mobileTab === 'list'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <List size={15} /> Spots
+        </button>
+        <button
+          onClick={() => setMobileTab('map')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            mobileTab === 'map'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <Map size={15} /> Map
+        </button>
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 max-w-6xl w-full mx-auto px-4 py-4 flex gap-4 overflow-hidden" style={{ height: 'calc(100vh - 7rem)' }}>
+
+        {/* Spot list — hidden on mobile when map tab is active */}
+        <div className={`w-full md:w-96 md:flex-shrink-0 overflow-y-auto scrollbar-thin ${mobileTab === 'map' ? 'hidden md:block' : 'block'}`}>
           {daySpots.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-400 text-sm">No spots assigned to this day.</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {daySpots.map((spot) => (
+              {daySpots.map((spot, i) => (
                 <div
                   key={spot.id}
-                  onClick={() => setSelectedSpotId(spot.id)}
+                  onClick={() => { setSelectedSpotId(spot.id); if (window.innerWidth < 768) setMobileTab('map'); }}
                   className={`bg-white rounded-xl border p-3 cursor-pointer transition-all ${
                     selectedSpotId === spot.id ? 'border-blue-300 shadow-md' : 'border-gray-100 hover:shadow-sm'
                   }`}
                 >
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-2">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1">
+                        {/* Number badge */}
+                        <span
+                          className="w-5 h-5 rounded-full text-white text-xs font-bold flex items-center justify-center flex-shrink-0"
+                          style={{ background: dayColor }}
+                        >
+                          {i + 1}
+                        </span>
                         <span className="text-sm">{SPOT_TYPE_CONFIG[spot.type]?.emoji || '📍'}</span>
                         <span className="font-medium text-sm text-gray-900 truncate">{spot.name}</span>
                         {spot.checked && <Check size={14} className="text-green-500 flex-shrink-0" />}
                       </div>
-                      {spot.timeOverride && (
+                      {/* Time — editable in edit mode */}
+                      {isEditMode ? (
+                        <div className="flex items-center gap-1 mb-1" onClick={e => e.stopPropagation()}>
+                          <Clock size={10} className="text-gray-400" />
+                          <input
+                            type="time"
+                            defaultValue={spot.timeOverride || ''}
+                            onBlur={e => handleTimeEdit(spot.id, e.target.value)}
+                            className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-300"
+                          />
+                        </div>
+                      ) : spot.timeOverride ? (
                         <p className="text-xs text-gray-400 flex items-center gap-1">
                           <Clock size={10} /> {spot.timeOverride}
                         </p>
-                      )}
+                      ) : null}
                       {spot.address && (
                         <p className="text-xs text-gray-400 mt-0.5 truncate">{spot.address}</p>
                       )}
                     </div>
-                    <a
-                      href={`https://www.google.com/maps/search/?api=1&query=${spot.lat},${spot.lng}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      onClick={(e) => e.stopPropagation()}
-                      className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-300 hover:text-blue-500 transition-colors flex-shrink-0"
-                    >
-                      <ExternalLink size={14} />
-                    </a>
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      {/* Check toggle in edit mode */}
+                      {isEditMode && (
+                        <button
+                          onClick={e => { e.stopPropagation(); handleToggleCheck(spot.id); }}
+                          className={`p-1.5 rounded-lg transition-colors ${
+                            spot.checked
+                              ? 'bg-green-100 text-green-600 hover:bg-green-200'
+                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
+                          }`}
+                          title={spot.checked ? 'Mark unvisited' : 'Mark visited'}
+                        >
+                          <Check size={14} />
+                        </button>
+                      )}
+                      <a
+                        href={`https://www.google.com/maps/search/?api=1&query=${spot.lat},${spot.lng}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={e => e.stopPropagation()}
+                        className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-300 hover:text-blue-500 transition-colors"
+                      >
+                        <ExternalLink size={14} />
+                      </a>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -306,13 +415,13 @@ export default function SharedTripPage({ params }: { params: Promise<{ tripId: s
           )}
         </div>
 
-        {/* Map */}
-        <div className="flex-1 rounded-xl overflow-hidden border border-gray-200">
+        {/* Map — hidden on mobile when list tab is active */}
+        <div className={`flex-1 rounded-xl overflow-hidden border border-gray-200 min-h-[300px] ${mobileTab === 'list' ? 'hidden md:block' : 'block'}`}>
           <PlanMap
             spots={daySpots}
             dayColor={dayColor}
             selectedSpotId={selectedSpotId}
-            onSpotSelect={setSelectedSpotId}
+            onSpotSelect={id => { setSelectedSpotId(id); }}
           />
         </div>
       </div>

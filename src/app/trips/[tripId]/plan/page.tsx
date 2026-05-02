@@ -13,7 +13,7 @@ import Overview from '@/components/plan/Overview';
 import ShareModal from '@/components/plan/ShareModal';
 import { optimizeRoute } from '@/lib/route-optimizer';
 import { GROUP_COLORS } from '@/types';
-import { ChevronLeft, ChevronRight, LayoutGrid, Share2, Wand2, MapPinned, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, LayoutGrid, Share2, Wand2, MapPinned, FileText, Map, List } from 'lucide-react';
 
 function guessAreaFromSpots(daySpots: { address?: string }[]): string {
   if (daySpots.length === 0) return '';
@@ -45,6 +45,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [showShare, setShowShare] = useState(false);
   const [selectedSpotId, setSelectedSpotId] = useState<string>();
+  const [mobileTab, setMobileTab] = useState<'list' | 'map'>('list');
 
   // Editable day meta state
   const [editArea, setEditArea] = useState('');
@@ -164,7 +165,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
   dayDate.setDate(dayDate.getDate() + selectedDay);
 
   return (
-    <div className="h-[calc(100vh-8rem)]">
+    <div className="flex flex-col" style={{ height: 'calc(100vh - 8rem)' }}>
       {/* Day header */}
       <div className="bg-white border-b border-gray-100 px-4 py-3">
         <div className="max-w-6xl mx-auto flex items-center justify-between">
@@ -216,10 +217,34 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
         </div>
       </div>
 
+      {/* Mobile tab toggle */}
+      <div className="md:hidden flex items-center bg-white border-b border-gray-100 px-4 gap-1 flex-shrink-0">
+        <button
+          onClick={() => setMobileTab('list')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            mobileTab === 'list'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <List size={15} /> Spots
+        </button>
+        <button
+          onClick={() => setMobileTab('map')}
+          className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            mobileTab === 'map'
+              ? 'border-blue-500 text-blue-600'
+              : 'border-transparent text-gray-400 hover:text-gray-600'
+          }`}
+        >
+          <Map size={15} /> Map
+        </button>
+      </div>
+
       {/* Content */}
-      <div className="max-w-6xl mx-auto px-4 py-4 flex gap-4 h-[calc(100%-4rem)]">
+      <div className="flex-1 max-w-6xl w-full mx-auto px-4 py-4 flex gap-4 overflow-hidden">
         {/* Timeline */}
-        <div className="w-96 flex-shrink-0 overflow-y-auto scrollbar-thin">
+        <div className={`w-full md:w-96 md:flex-shrink-0 overflow-y-auto scrollbar-thin ${mobileTab === 'map' ? 'hidden md:block' : 'block'}`}>
           {/* Area + Description editable fields */}
           <div className="mb-4 space-y-2">
             <div className="flex items-center gap-2">
@@ -262,7 +287,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
         </div>
 
         {/* Map */}
-        <div className="flex-1 rounded-xl overflow-hidden border border-gray-200">
+        <div className={`flex-1 rounded-xl overflow-hidden border border-gray-200 min-h-[300px] ${mobileTab === 'list' ? 'hidden md:block' : 'block'}`}>
           <PlanMap
             spots={daySpots}
             dayColor={dayColor}
