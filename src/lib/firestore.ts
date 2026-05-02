@@ -67,6 +67,13 @@ export async function updateTrip(tripId: string, data: Partial<Trip>): Promise<v
   });
 }
 
+export async function setTripShared(tripId: string, isShared: boolean): Promise<void> {
+  await updateDoc(doc(db, 'trips', tripId), {
+    isShared,
+    updatedAt: serverTimestamp(),
+  });
+}
+
 export async function deleteTrip(tripId: string): Promise<void> {
   // Delete subcollections first
   const spotsSnap = await getDocs(collection(db, 'trips', tripId, 'spots'));

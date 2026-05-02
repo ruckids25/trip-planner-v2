@@ -24,6 +24,7 @@ export interface Trip {
   ownerId: string;
   collaborators: string[];
   status: 'uploading' | 'managing' | 'planning' | 'ready';
+  isShared?: boolean;
   createdAt: Timestamp;
   updatedAt: Timestamp;
 }

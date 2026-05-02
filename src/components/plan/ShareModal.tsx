@@ -1,7 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Trip } from '@/types';
+import { setTripShared } from '@/lib/firestore';
 import Modal from '@/components/ui/Modal';
 import { Copy, Check, Link as LinkIcon, Mail, Eye, Pencil } from 'lucide-react';
 
@@ -16,7 +17,14 @@ export default function ShareModal({ trip, open, onClose }: ShareModalProps) {
   const [permission, setPermission] = useState<'view' | 'edit'>('view');
 
   const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-  const shareUrl = `${baseUrl}/trips/${trip.id}/plan${permission === 'edit' ? '?mode=edit' : ''}`;
+  const shareUrl = `${baseUrl}/shared/${trip.id}${permission === 'edit' ? '?mode=edit' : ''}`;
+
+  // Auto-enable sharing when modal opens (mark trip as shared in Firestore)
+  useEffect(() => {
+    if (open && !trip.isShared) {
+      setTripShared(trip.id, true).catch(console.error);
+    }
+  }, [open, trip.id, trip.isShared]);
 
   const handleCopy = async () => {
     await navigator.clipboard.writeText(shareUrl);

@@ -13,8 +13,9 @@ service cloud.firestore {
       allow write: if request.auth.uid == uid;
     }
 
-    // Trips: owner + collaborators + admin reads all
+    // Trips: owner + collaborators + admin reads all + shared public read
     match /trips/{tripId} {
+      allow read: if resource.data.isShared == true;
       allow read: if request.auth != null &&
         (resource.data.ownerId == request.auth.uid ||
          request.auth.uid in resource.data.collaborators ||
@@ -23,8 +24,10 @@ service cloud.firestore {
       allow update, delete: if request.auth != null &&
         resource.data.ownerId == request.auth.uid;
 
-      // Spots & Groups: inherit from parent trip + admin reads
+      // Spots & Groups: inherit from parent trip + admin reads + shared public read
       match /{subcol}/{docId} {
+        allow read: if get(/databases/$(database)/documents/trips/$(tripId))
+          .data.isShared == true;
         allow read, write: if request.auth != null &&
           (get(/databases/$(database)/documents/trips/$(tripId))
             .data.ownerId == request.auth.uid ||
