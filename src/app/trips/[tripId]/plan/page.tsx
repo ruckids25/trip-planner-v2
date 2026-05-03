@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect, use } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { useTrip } from '@/hooks/useTrip';
 import { useSpots } from '@/hooks/useSpots';
 import { useGroups } from '@/hooks/useGroups';
@@ -37,6 +38,7 @@ interface PlaceResult { name: string; lat: number; lng: number; address: string;
 
 export default function PlanPage({ params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = use(params);
+  const searchParams = useSearchParams();
   const { trip } = useTrip(tripId);
   const { spots, update: updateSpot, add: addSpot, remove: removeSpot } = useSpots(tripId);
   const { groups } = useGroups(tripId);
@@ -52,6 +54,27 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
     const end = new Date(trip.endDate);
     return Math.ceil((end.getTime() - start.getTime()) / 86400000) + 1;
   }, [trip]);
+
+  // Read ?day query param: "today" or a number → jump straight to day view
+  useEffect(() => {
+    if (!trip) return;
+    const day = searchParams?.get('day');
+    if (!day) return;
+    if (day === 'today') {
+      const start = new Date(trip.startDate);
+      start.setHours(0, 0, 0, 0);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const diff = Math.round((today.getTime() - start.getTime()) / 86400000);
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot from ?day=today (Date.now() impure in render)
+      setSelectedDay(Math.min(Math.max(diff, 0), totalDays - 1));
+    } else {
+      const n = parseInt(day, 10);
+      if (!Number.isNaN(n) && n >= 0 && n < totalDays) {
+        setSelectedDay(n);
+      }
+    }
+  }, [trip, totalDays, searchParams]);
 
   const getDaySpots = useCallback((dayIdx: number) => {
     const dayGroups = groups.filter((g) => g.assignedDay === dayIdx);
