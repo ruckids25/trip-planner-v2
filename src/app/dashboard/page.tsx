@@ -11,7 +11,7 @@ import { useToast } from '@/components/ui/Toast';
 import { Trip } from '@/types';
 import BottomNav from '@/components/ui/BottomNav';
 import CollabAvatars from '@/components/ui/CollabAvatars';
-import { IconPlus, IconChevRight, IconX } from '@/components/ui/Icons';
+import { IconPlus, IconChevRight, IconX, IconTrash } from '@/components/ui/Icons';
 
 const TRIP_EMOJIS = ['🗾','🇹🇭','🗼','⛩️','🏔️','🌏','🏝️','🌄','🎡','🏙️','🌃','🎌','🌺','🍜','🚂'];
 const DAY_COLORS = ['#4F46E5','#0891B2','#059669','#D97706','#DC2626','#7C3AED','#DB2777'];
@@ -49,11 +49,28 @@ export default function DashboardPage() {
 
 function DashboardInner() {
   const { user } = useAuthContext();
-  const { trips } = useUserTrips(user?.uid);
+  const { trips, deleteTrip: deleteTripFromHook } = useUserTrips(user?.uid);
   const router = useRouter();
   const { toast } = useToast();
 
   const [showNew, setShowNew] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState<Trip | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleDeleteTrip = async () => {
+    if (!confirmDelete) return;
+    setDeleting(true);
+    try {
+      await deleteTripFromHook(confirmDelete.id);
+      toast(`ลบทริป "${confirmDelete.title}" แล้ว`, 'success');
+      setConfirmDelete(null);
+    } catch (err) {
+      console.error(err);
+      toast('ลบทริปไม่สำเร็จ', 'error');
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const { featured, others } = useMemo(() => {
     if (!trips || trips.length === 0) return { featured: null as Trip | null, others: [] as Trip[] };
@@ -95,7 +112,11 @@ function DashboardInner() {
           {featured && (
             <div style={{ marginBottom: 16 }}>
               <p className="section-label" style={{ marginBottom: 10 }}>ทริปถัดไป</p>
-              <FeaturedCard trip={featured} onOpen={() => router.push(`/trips/${featured.id}/plan`)} />
+              <FeaturedCard
+                trip={featured}
+                onOpen={() => router.push(`/trips/${featured.id}/plan`)}
+                onDelete={() => setConfirmDelete(featured)}
+              />
             </div>
           )}
 
@@ -166,6 +187,29 @@ function DashboardInner() {
                     )}
                   </div>
                 </div>
+                <button
+                  onClick={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setConfirmDelete(trip);
+                  }}
+                  aria-label={`ลบทริป ${trip.title}`}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    padding: 6,
+                    borderRadius: 8,
+                    display: 'flex',
+                    alignItems: 'center',
+                    flexShrink: 0,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'var(--red-light)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'none'; }}
+                >
+                  <IconTrash width={15} height={15} />
+                </button>
                 <div style={{ color: 'var(--text-muted)' }}>
                   <IconChevRight />
                 </div>
@@ -202,11 +246,120 @@ function DashboardInner() {
           }
         }}
       />
+
+      <DeleteConfirmSheet
+        trip={confirmDelete}
+        deleting={deleting}
+        onCancel={() => !deleting && setConfirmDelete(null)}
+        onConfirm={handleDeleteTrip}
+      />
     </>
   );
 }
 
-function FeaturedCard({ trip, onOpen }: { trip: Trip; onOpen: () => void }) {
+function DeleteConfirmSheet({
+  trip,
+  deleting,
+  onCancel,
+  onConfirm,
+}: {
+  trip: Trip | null;
+  deleting: boolean;
+  onCancel: () => void;
+  onConfirm: () => void;
+}) {
+  const open = trip !== null;
+  return (
+    <>
+      <div className={`sheet-overlay ${open ? 'open' : ''}`} onClick={onCancel} />
+      <div className={`bottom-sheet ${open ? 'open' : ''}`}>
+        <div className="sheet-handle" />
+        <div style={{ padding: '20px 20px 32px' }}>
+          {/* Warning icon header */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center', marginBottom: 20 }}>
+            <div
+              style={{
+                width: 56,
+                height: 56,
+                borderRadius: '50%',
+                background: 'var(--red-light)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: 12,
+                color: 'var(--red)',
+              }}
+            >
+              <IconTrash width={26} height={26} />
+            </div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-head)', marginBottom: 6 }}>
+              ลบทริปนี้?
+            </h2>
+            <p style={{ fontSize: 14, color: 'var(--text-secondary)', lineHeight: 1.5 }}>
+              ทริป <strong style={{ color: 'var(--text-primary)' }}>&ldquo;{trip?.title ?? ''}&rdquo;</strong>
+              <br />
+              พร้อมสถานที่ทั้งหมดในทริปนี้จะถูกลบถาวร
+            </p>
+          </div>
+
+          {/* Action buttons */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <button
+              onClick={onConfirm}
+              disabled={deleting}
+              style={{
+                width: '100%',
+                padding: '12px 20px',
+                background: 'var(--red)',
+                color: 'white',
+                border: 'none',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 15,
+                fontWeight: 700,
+                cursor: deleting ? 'default' : 'pointer',
+                fontFamily: 'var(--font-body)',
+                opacity: deleting ? 0.7 : 1,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+              }}
+            >
+              {deleting ? (
+                <>
+                  <span
+                    style={{
+                      width: 14,
+                      height: 14,
+                      border: '2px solid white',
+                      borderTopColor: 'transparent',
+                      borderRadius: '50%',
+                      display: 'inline-block',
+                      animation: 'spin .7s linear infinite',
+                    }}
+                  />
+                  กำลังลบ...
+                </>
+              ) : (
+                <>ลบทริป</>
+              )}
+            </button>
+            <button
+              onClick={onCancel}
+              disabled={deleting}
+              className="btn-ghost"
+              style={{ width: '100%' }}
+            >
+              ยกเลิก
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function FeaturedCard({ trip, onOpen, onDelete }: { trip: Trip; onOpen: () => void; onDelete: () => void }) {
   const accent = 'var(--accent)';
   const days = daysBetween(trip.startDate, trip.endDate);
   // Compute days-until on the client only — keeps SSR + render pure
@@ -226,10 +379,39 @@ function FeaturedCard({ trip, onOpen }: { trip: Trip; onOpen: () => void }) {
         border: '1.5px solid color-mix(in srgb, var(--accent) 30%, transparent)',
         cursor: 'pointer',
         padding: 16,
+        position: 'relative',
       }}
     >
+      {/* Delete button — top-right corner overlay */}
+      <button
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}
+        aria-label={`ลบทริป ${trip.title}`}
+        style={{
+          position: 'absolute',
+          top: 10,
+          right: 10,
+          background: 'rgba(255,255,255,0.7)',
+          backdropFilter: 'blur(6px)',
+          WebkitBackdropFilter: 'blur(6px)',
+          border: '1px solid var(--border)',
+          borderRadius: 8,
+          width: 28,
+          height: 28,
+          cursor: 'pointer',
+          color: 'var(--text-muted)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          transition: 'color .15s, background .15s',
+        }}
+        onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--red)'; e.currentTarget.style.background = 'var(--red-light)'; }}
+        onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--text-muted)'; e.currentTarget.style.background = 'rgba(255,255,255,0.7)'; }}
+      >
+        <IconTrash width={14} height={14} />
+      </button>
+
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
-        <div>
+        <div style={{ paddingRight: 36 /* leave room for the delete button */ }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
             <span
               style={{
@@ -259,7 +441,7 @@ function FeaturedCard({ trip, onOpen }: { trip: Trip; onOpen: () => void }) {
             <span style={{ lineHeight: 1 }}>{trip.country}</span>
           </p>
         </div>
-        <div style={{ fontSize: 36 }}>{emoji}</div>
+        <div style={{ fontSize: 36, marginTop: 18 }}>{emoji}</div>
       </div>
 
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
