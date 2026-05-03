@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useMemo, useEffect, use } from 'react';
-import { useSearchParams } from 'next/navigation';
+import { useSearchParams, useRouter } from 'next/navigation';
 import { useTrip } from '@/hooks/useTrip';
 import { useSpots } from '@/hooks/useSpots';
 import { useGroups } from '@/hooks/useGroups';
@@ -39,6 +39,7 @@ interface PlaceResult { name: string; lat: number; lng: number; address: string;
 export default function PlanPage({ params }: { params: Promise<{ tripId: string }> }) {
   const { tripId } = use(params);
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { trip } = useTrip(tripId);
   const { spots, update: updateSpot, add: addSpot, remove: removeSpot } = useSpots(tripId);
   const { groups } = useGroups(tripId);
@@ -47,6 +48,17 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
 
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [showShare, setShowShare] = useState(false);
+
+  // Sync URL with day selection so BottomNav highlights "วันนี้" tab.
+  // null → /trips/[id]/plan ; number → /trips/[id]/plan?day=N
+  const selectDay = useCallback(
+    (next: number | null) => {
+      setSelectedDay(next);
+      const path = `/trips/${tripId}/plan${next === null ? '' : `?day=${next}`}`;
+      router.replace(path, { scroll: false });
+    },
+    [tripId, router],
+  );
 
   const totalDays = useMemo(() => {
     if (!trip) return 0;
@@ -165,7 +177,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
           spots={spots}
           groups={groups}
           dayMetas={dayMetas}
-          onDaySelect={setSelectedDay}
+          onDaySelect={selectDay}
           onShare={() => setShowShare(true)}
           onExport={() => toast('กำลัง Export...')}
         />
@@ -201,7 +213,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 2 }}>
             <button
-              onClick={() => setSelectedDay(null)}
+              onClick={() => selectDay(null)}
               style={iconBtnInline}
               aria-label="กลับไปยังภาพรวม"
             >
@@ -209,7 +221,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
             </button>
             <div style={{ width: 1, height: 20, background: 'var(--border)' }} />
             <button
-              onClick={() => setSelectedDay(Math.max(0, selectedDay - 1))}
+              onClick={() => selectDay(Math.max(0, selectedDay - 1))}
               disabled={selectedDay === 0}
               style={{ ...iconBtnInline, color: selectedDay === 0 ? 'var(--border)' : 'var(--text-secondary)' }}
               aria-label="วันก่อนหน้า"
@@ -248,7 +260,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
               </p>
             </div>
             <button
-              onClick={() => setSelectedDay(Math.min(totalDays - 1, selectedDay + 1))}
+              onClick={() => selectDay(Math.min(totalDays - 1, selectedDay + 1))}
               disabled={selectedDay >= totalDays - 1}
               style={{
                 ...iconBtnInline,
@@ -265,7 +277,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
             {Array.from({ length: totalDays }, (_, i) => (
               <button
                 key={i}
-                onClick={() => setSelectedDay(i)}
+                onClick={() => selectDay(i)}
                 style={{
                   width: i === selectedDay ? 20 : 7,
                   height: 7,
@@ -282,8 +294,8 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
           </div>
         </div>
 
-        {/* ── Map (top) ────────────────────────────── */}
-        <div style={{ height: 220, flexShrink: 0, position: 'relative' }}>
+        {/* ── Map (top) — 160px keeps search box + first spot in view ── */}
+        <div style={{ height: 160, flexShrink: 0, position: 'relative' }}>
           <PlanMap
             spots={daySpots}
             dayColor={color}
@@ -337,7 +349,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
           </div>
 
           {/* Itinerary */}
-          <div style={{ padding: '12px 16px 80px' }}>
+          <div style={{ padding: '12px 16px 16px' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
               <span className="section-label">กำหนดการ · {daySpots.length} จุด</span>
               <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>ลากเพื่อเรียงลำดับ</span>
@@ -351,6 +363,69 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
               onDelete={(id) => removeSpot(id)}
               onReorder={handleReorder}
             />
+          </div>
+
+          {/* Big prev/next day footer — easier than the small chevrons in header */}
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: 10,
+              padding: '8px 16px calc(var(--nav-h) + 24px)',
+            }}
+          >
+            <button
+              onClick={() => selectDay(Math.max(0, selectedDay - 1))}
+              disabled={selectedDay === 0}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                padding: '14px 12px',
+                background: 'white',
+                border: '1.5px solid var(--border)',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 14,
+                fontWeight: 600,
+                color: selectedDay === 0 ? 'var(--text-muted)' : 'var(--text-primary)',
+                cursor: selectedDay === 0 ? 'default' : 'pointer',
+                fontFamily: 'var(--font-body)',
+                opacity: selectedDay === 0 ? 0.45 : 1,
+              }}
+            >
+              <IconChevLeft width={16} height={16} />
+              <div style={{ textAlign: 'left' }}>
+                <div style={{ fontSize: 10, fontWeight: 500, color: 'var(--text-muted)' }}>วันก่อนหน้า</div>
+                <div>{selectedDay === 0 ? '—' : `วันที่ ${selectedDay}`}</div>
+              </div>
+            </button>
+            <button
+              onClick={() => selectDay(Math.min(totalDays - 1, selectedDay + 1))}
+              disabled={selectedDay >= totalDays - 1}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 6,
+                padding: '14px 12px',
+                background: selectedDay >= totalDays - 1 ? 'white' : color,
+                border: `1.5px solid ${selectedDay >= totalDays - 1 ? 'var(--border)' : 'transparent'}`,
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 14,
+                fontWeight: 600,
+                color: selectedDay >= totalDays - 1 ? 'var(--text-muted)' : 'white',
+                cursor: selectedDay >= totalDays - 1 ? 'default' : 'pointer',
+                fontFamily: 'var(--font-body)',
+                opacity: selectedDay >= totalDays - 1 ? 0.45 : 1,
+              }}
+            >
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 10, fontWeight: 500, opacity: 0.85 }}>วันถัดไป</div>
+                <div>{selectedDay >= totalDays - 1 ? '—' : `วันที่ ${selectedDay + 2}`}</div>
+              </div>
+              <IconChevRight width={16} height={16} />
+            </button>
           </div>
         </div>
       </div>

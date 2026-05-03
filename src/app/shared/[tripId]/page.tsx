@@ -3,8 +3,9 @@
 import { useState, useCallback, useMemo, useEffect, use } from 'react';
 import { Trip, Spot, Group, DayMeta, SPOT_TYPE_CONFIG, GROUP_COLORS } from '@/types';
 import { getTrip, getSpots, getGroups, getDayMetas, updateSpot } from '@/lib/firestore';
+import BottomNav from '@/components/ui/BottomNav';
 import {
-  IconChevLeft, IconChevRight, IconClock, IconExternalLink, IconCopy, IconCheck, IconEdit,
+  IconChevLeft, IconClock, IconExternalLink, IconCopy, IconCheck, IconEdit,
 } from '@/components/ui/Icons';
 
 const DOW_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
@@ -305,6 +306,7 @@ export default function SharedTripPage({
             )}
           </div>
         </div>
+        <BottomNav />
       </>
     );
   }
@@ -475,14 +477,12 @@ export default function SharedTripPage({
               return (
                 <div
                   key={i}
-                  onClick={() => setSelectedDay(i)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 10,
                     padding: '10px 12px',
                     borderBottom: i < totalDays - 1 ? '1px solid var(--border)' : 'none',
-                    cursor: 'pointer',
                     background: 'white',
                   }}
                 >
@@ -521,15 +521,13 @@ export default function SharedTripPage({
                       <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{daySpots.length} จุด</span>
                     </div>
                   </div>
-                  <div style={{ color: 'var(--text-muted)', display: 'flex' }}>
-                    <IconChevRight />
-                  </div>
                 </div>
               );
             })}
           </div>
         </div>
       </div>
+      <BottomNav />
     </>
   );
 }

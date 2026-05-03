@@ -6,6 +6,13 @@ import {
   IconCheck, IconClock, IconExternalLink, IconGrip, IconStar, IconTrash,
 } from '@/components/ui/Icons';
 
+interface DragHandleProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  attributes: any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  listeners: any;
+}
+
 interface Props {
   spot: Spot;
   index: number;
@@ -16,13 +23,10 @@ interface Props {
   onTimeEdit: (spotId: string, time: string) => void;
   onNoteEdit?: (spotId: string, note: string) => void;
   onDelete?: (spotId: string) => void;
+  /** when true, the IconGrip is shown and accepts dragHandleProps */
   draggable?: boolean;
-  onDragStart?: () => void;
-  onDragEnd?: () => void;
-  onDragOver?: (e: React.DragEvent) => void;
-  onDrop?: () => void;
-  isDragging?: boolean;
-  isOver?: boolean;
+  /** dnd-kit listeners + attributes — applied ONLY to the grip handle */
+  dragHandleProps?: DragHandleProps;
 }
 
 const MAX_NOTE = 140;
@@ -30,8 +34,7 @@ const MAX_NOTE = 140;
 export default function SpotCard({
   spot, index, dayColor, selected, onSelect,
   onToggleCheck, onTimeEdit, onNoteEdit, onDelete,
-  draggable, onDragStart, onDragEnd, onDragOver, onDrop,
-  isDragging, isOver,
+  draggable, dragHandleProps,
 }: Props) {
   const tc = SPOT_TYPE_CONFIG[spot.type] || SPOT_TYPE_CONFIG.other;
 
@@ -53,20 +56,8 @@ export default function SpotCard({
   const stop = (e: React.MouseEvent | React.SyntheticEvent) => e.stopPropagation();
 
   return (
-    <div
-      className="timeline-item"
-      draggable={draggable}
-      onDragStart={onDragStart}
-      onDragOver={onDragOver}
-      onDrop={onDrop}
-      onDragEnd={onDragEnd}
-      style={{
-        opacity: isDragging ? 0.4 : 1,
-        transform: isOver ? 'scale(0.98)' : 'none',
-        transition: 'opacity .15s, transform .15s',
-        cursor: draggable ? 'grab' : 'default',
-      }}
-    >
+    <div className="timeline-item" {...(dragHandleProps?.attributes ?? {})}>
+
       {/* tl-dot — clickable check */}
       <div
         className={`tl-dot ${spot.checked ? 'checked' : ''}`}
@@ -136,9 +127,26 @@ export default function SpotCard({
             onClick={stop}
           >
             {draggable && (
-              <div style={{ color: 'var(--text-muted)', display: 'flex', padding: '2px 4px', cursor: 'grab', opacity: 0.5 }}>
+              <button
+                {...(dragHandleProps?.listeners ?? {})}
+                aria-label="ลากเพื่อจัดลำดับใหม่"
+                style={{
+                  color: 'var(--text-muted)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: 6,
+                  cursor: 'grab',
+                  touchAction: 'none', // critical: tells the browser to NOT scroll while we're dragging
+                  background: 'none',
+                  border: 'none',
+                  borderRadius: 6,
+                  opacity: 0.55,
+                }}
+                onClick={(e) => e.stopPropagation()}
+              >
                 <IconGrip width={14} height={14} />
-              </div>
+              </button>
             )}
             <a
               href={`https://maps.google.com/?q=${spot.lat},${spot.lng}`}
