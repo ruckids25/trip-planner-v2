@@ -1,151 +1,336 @@
 'use client';
 
-import { Trip, Spot, Group, DayMeta, SPOT_TYPE_CONFIG } from '@/types';
-import { calculateTotalDistance } from '@/lib/route-optimizer';
-import { MapPin, Check, Route, Calendar, Hotel, ChevronRight } from 'lucide-react';
-import { GROUP_COLORS } from '@/types';
+import { useMemo } from 'react';
+import { Trip, Spot, Group, DayMeta, SPOT_TYPE_CONFIG, GROUP_COLORS } from '@/types';
+import CollabAvatars from '@/components/ui/CollabAvatars';
+import { IconShare, IconExport, IconHotel } from '@/components/ui/Icons';
 
-interface OverviewProps {
+interface Props {
   trip: Trip;
   spots: Spot[];
   groups: Group[];
   dayMetas: DayMeta[];
   onDaySelect: (dayIdx: number) => void;
+  onShare?: () => void;
+  onExport?: () => void;
+  collaboratorProfiles?: { id: string; name: string; color: string; photoURL?: string }[];
 }
+
+const DOW_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
 
 function guessArea(daySpots: Spot[]): string {
   if (daySpots.length === 0) return '';
   const areas = daySpots
-    .map(s => s.address || '').filter(Boolean)
-    .map(addr => {
-      const parts = addr.split(',').map(p => p.trim());
+    .map((s) => s.address || '').filter(Boolean)
+    .map((addr) => {
+      const parts = addr.split(',').map((p) => p.trim());
       return parts.length >= 3 ? parts[parts.length - 3] : parts.length >= 2 ? parts[parts.length - 2] : parts[0];
-    }).filter(Boolean);
+    })
+    .filter(Boolean);
   const freq: Record<string, number> = {};
-  areas.forEach(a => { freq[a] = (freq[a] || 0) + 1; });
+  areas.forEach((a) => { freq[a] = (freq[a] || 0) + 1; });
   const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
   if (sorted.length === 0) return '';
-  return sorted.length === 1 ? sorted[0][0] : `${sorted[0][0]}, ${sorted[1][0]}`;
+  if (sorted.length === 1) return sorted[0][0];
+  return `${sorted[0][0]}, ${sorted[1][0]}`;
 }
 
-const DAYS_OF_WEEK_TH = ['อา.','จ.','อ.','พ.','พฤ.','ศ.','ส.'];
-const MONTHS_SHORT = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+export default function Overview({
+  trip,
+  spots,
+  groups,
+  dayMetas,
+  onDaySelect,
+  onShare,
+  onExport,
+  collaboratorProfiles,
+}: Props) {
+  const totalDays = useMemo(() => {
+    const start = new Date(trip.startDate);
+    const end = new Date(trip.endDate);
+    return Math.ceil((end.getTime() - start.getTime()) / 86400000) + 1;
+  }, [trip]);
 
-export default function Overview({ trip, spots, groups, dayMetas, onDaySelect }: OverviewProps) {
-  const startDate = new Date(trip.startDate);
-  const endDate = new Date(trip.endDate);
-  const totalDays = Math.ceil((endDate.getTime() - startDate.getTime()) / 86400000) + 1;
+  const stats = useMemo(() => {
+    const checked = spots.filter((s) => s.checked).length;
+    return {
+      days: totalDays,
+      spots: spots.length,
+      visited: checked,
+      remaining: spots.length - checked,
+    };
+  }, [spots, totalDays]);
 
-  const checkedCount = spots.filter(s => s.checked).length;
-  const totalDistance = calculateTotalDistance(spots);
+  const days = useMemo(() => {
+    const startDate = new Date(trip.startDate);
+    return Array.from({ length: totalDays }, (_, i) => {
+      const date = new Date(startDate);
+      date.setDate(date.getDate() + i);
+      const dayGroups = groups.filter((g) => g.assignedDay === i);
+      const daySpotIds = dayGroups.flatMap((g) => g.spotIds);
+      const daySpots = spots
+        .filter((s) => daySpotIds.includes(s.id))
+        .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+      const meta = dayMetas.find((m) => m.dayIdx === i);
+      return {
+        dayIdx: i,
+        date,
+        dow: DOW_TH[date.getDay()],
+        area: meta?.area || guessArea(daySpots),
+        description: meta?.description || '',
+        spots: daySpots,
+        checked: daySpots.filter((s) => s.checked).length,
+        hotel: meta?.hotelName ? { name: meta.hotelName } : null,
+      };
+    });
+  }, [trip, totalDays, groups, spots, dayMetas]);
 
-  const days = Array.from({ length: totalDays }, (_, i) => {
-    const date = new Date(startDate);
-    date.setDate(date.getDate() + i);
-    const dayGroups = groups.filter(g => g.assignedDay === i);
-    const daySpotIds = dayGroups.flatMap(g => g.spotIds);
-    const daySpots = spots.filter(s => daySpotIds.includes(s.id));
-    const dayChecked = daySpots.filter(s => s.checked).length;
-    const meta = dayMetas.find(m => m.dayIdx === i);
-    const area = meta?.area || guessArea(daySpots);
-    return { date, dayIdx: i, spots: daySpots, checked: dayChecked, groups: dayGroups, area, meta };
-  });
+  const tripEmoji = (trip as Trip & { emoji?: string }).emoji ?? '🗺️';
+  const collaborators = collaboratorProfiles ?? trip.collaborators.map((uid, i) => ({
+    id: uid,
+    name: uid.slice(0, 1).toUpperCase(),
+    color: GROUP_COLORS[i % GROUP_COLORS.length],
+  }));
 
   return (
-    <div className="space-y-5">
+    <div className="app-page" style={{ paddingBottom: 'calc(var(--nav-h) + 16px)' }}>
+      {/* ── Header ───────────────────────────────────────── */}
+      <div style={{ padding: '20px 20px 16px', background: 'white', borderBottom: '1px solid var(--border)' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
+          <div style={{ minWidth: 0 }}>
+            <p
+              style={{
+                fontSize: 11,
+                color: 'var(--text-muted)',
+                fontWeight: 600,
+                textTransform: 'uppercase',
+                letterSpacing: 1,
+                marginBottom: 4,
+              }}
+            >
+              ภาพรวมทริป
+            </p>
+            <h1 style={{ fontSize: 20, fontWeight: 700, fontFamily: 'var(--font-head)', lineHeight: 1.2 }}>
+              {trip.title}
+            </h1>
+            <p
+              style={{
+                fontSize: 13,
+                color: 'var(--text-secondary)',
+                marginTop: 3,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+              }}
+            >
+              <span style={{ fontSize: 16 }}>{tripEmoji}</span>
+              {trip.country} · {totalDays} วัน
+            </p>
+          </div>
+          <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+            <button onClick={onShare} style={iconBtnStyle} aria-label="Share trip">
+              <IconShare width={15} height={15} />
+            </button>
+            <button onClick={onExport} style={iconBtnStyle} aria-label="Export trip">
+              <IconExport width={15} height={15} />
+            </button>
+          </div>
+        </div>
 
-      {/* ── Stats grid ── */}
-      <div className="grid grid-cols-4 gap-2.5">
+        {/* Collaborators row */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '10px 0 2px' }}>
+          <CollabAvatars users={collaborators} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <p
+              style={{
+                fontSize: 12,
+                color: 'var(--text-secondary)',
+                fontWeight: 500,
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {collaborators.length === 1
+                ? `${collaborators[0].name} กำลังจัดแผนคนเดียว`
+                : `${collaborators.slice(0, 3).map((c) => c.name).join(', ')} ร่วมแผนการเดินทาง`}
+            </p>
+          </div>
+          <button
+            onClick={onShare}
+            style={{
+              fontSize: 11,
+              color: 'var(--accent)',
+              fontWeight: 600,
+              border: 'none',
+              background: 'none',
+              cursor: 'pointer',
+            }}
+          >
+            + เพิ่มคน
+          </button>
+        </div>
+      </div>
+
+      {/* ── Stats grid (4 cols) ─────────────────────────── */}
+      <div style={{ padding: '14px 16px', display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
         {[
-          { icon: <Calendar size={16}/>, label: 'วัน', value: totalDays, bg: '#EEF2FF', color: '#4F46E5' },
-          { icon: <MapPin size={16}/>, label: 'สถานที่', value: spots.length, bg: '#F0FDF4', color: '#059669' },
-          { icon: <Check size={16}/>, label: 'เยี่ยมแล้ว', value: checkedCount, bg: '#FEF3C7', color: '#D97706' },
-          { icon: <Route size={16}/>, label: 'กม.', value: `${totalDistance.toFixed(0)}`, bg: '#FEE2E2', color: '#DC2626' },
-        ].map(s => (
-          <div key={s.label} className="bg-white rounded-2xl p-3 text-center border border-[var(--border)]"
-            style={{ boxShadow: 'var(--shadow-sm)' }}>
-            <div className="w-8 h-8 rounded-xl mx-auto flex items-center justify-center mb-1.5"
-              style={{ background: s.bg, color: s.color }}>
-              {s.icon}
-            </div>
-            <p className="text-base font-bold text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-head)' }}>{s.value}</p>
-            <p className="text-[10px] text-[var(--text-muted)]">{s.label}</p>
+          { label: 'วัน', value: stats.days, icon: '📅' },
+          { label: 'จุด', value: stats.spots, icon: '📍' },
+          { label: 'เยี่ยมแล้ว', value: stats.visited, icon: '✅' },
+          { label: 'เหลือ', value: stats.remaining, icon: '⏳' },
+        ].map((s) => (
+          <div key={s.label} style={statCardStyle}>
+            <div style={{ fontSize: 18, marginBottom: 4 }}>{s.icon}</div>
+            <div style={{ fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-head)' }}>{s.value}</div>
+            <div style={{ fontSize: 10, color: 'var(--text-muted)', fontWeight: 500 }}>{s.label}</div>
           </div>
         ))}
       </div>
 
-      {/* ── Day cards ── */}
-      <div className="space-y-3">
-        {days.map(day => {
-          const color = GROUP_COLORS[day.dayIdx % GROUP_COLORS.length];
-          const progress = day.spots.length > 0 ? (day.checked / day.spots.length) * 100 : 0;
-          const dowTh = DAYS_OF_WEEK_TH[day.date.getDay()];
-          const dateTh = `${dowTh} ${day.date.getDate()} ${MONTHS_SHORT[day.date.getMonth()]}`;
-
-          // Get unique spot types for chips
-          const typeChips = [...new Set(day.spots.map(s => s.type))].slice(0, 3);
-
+      {/* ── Day cards ───────────────────────────────────── */}
+      <div style={{ padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <p className="section-label">แผนทีละวัน</p>
+        {days.map((day, i) => {
+          const color = GROUP_COLORS[i % GROUP_COLORS.length];
+          const pct = day.spots.length ? day.checked / day.spots.length : 0;
           return (
             <div
               key={day.dayIdx}
+              className="card"
+              style={{ cursor: 'pointer', overflow: 'hidden' }}
               onClick={() => onDaySelect(day.dayIdx)}
-              className="bg-white rounded-2xl border border-[var(--border)] overflow-hidden cursor-pointer hover:shadow-md transition-all relative"
-              style={{ boxShadow: 'var(--shadow-sm)' }}
             >
-              {/* Top color bar */}
-              <div className="h-1.5 w-full" style={{ background: color }}/>
-
-              <div className="p-4">
-                <div className="flex items-start justify-between mb-2">
-                  <div>
-                    <div className="flex items-center gap-2 mb-0.5">
-                      <span className="text-xs font-bold text-[var(--text-muted)] uppercase tracking-wider">
+              {/* color bar top */}
+              <div style={{ height: 4, background: `linear-gradient(90deg, ${color}, ${color}80)` }} />
+              <div style={{ padding: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 10, gap: 8 }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                      <span
+                        style={{
+                          background: color,
+                          color: 'white',
+                          borderRadius: 8,
+                          padding: '2px 10px',
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
                         วันที่ {day.dayIdx + 1}
                       </span>
-                      <span className="text-xs text-[var(--text-muted)]">{dateTh}</span>
+                      <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{day.dow}</span>
                     </div>
-                    <h3 className="font-bold text-[var(--text-primary)] leading-tight"
-                      style={{ fontFamily: 'var(--font-head)', fontSize: 15 }}>
-                      {day.area || `Day ${day.dayIdx + 1}`}
-                    </h3>
+                    <p
+                      style={{
+                        fontSize: 15,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {day.area || `${day.spots.length} สถานที่`}
+                    </p>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                      style={{ background: `${color}18`, color }}>
-                      {day.checked}/{day.spots.length} จุด
+                </div>
+
+                {/* Progress */}
+                <div style={{ marginBottom: 10 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 5 }}>
+                    <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                      เยี่ยม {day.checked}/{day.spots.length} จุด
                     </span>
-                    <ChevronRight size={16} className="text-[var(--text-muted)]"/>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 600,
+                        color: pct > 0 ? color : 'var(--text-muted)',
+                      }}
+                    >
+                      {Math.round(pct * 100)}%
+                    </span>
+                  </div>
+                  <div className="progress-bar">
+                    <div
+                      className="progress-fill"
+                      style={{ width: `${pct * 100}%`, background: color }}
+                    />
                   </div>
                 </div>
 
-                {/* Progress bar */}
-                <div className="progress-bar mb-3">
-                  <div className="progress-fill" style={{ width: `${progress}%`, background: color }}/>
-                </div>
-
-                {/* Spot type chips */}
-                <div className="flex items-center gap-2 flex-wrap">
-                  {typeChips.map(type => {
-                    const tc = SPOT_TYPE_CONFIG[type] || SPOT_TYPE_CONFIG.other;
-                    return (
-                      <span key={type} className="type-chip"
-                        style={{ background: `${tc.color}18`, color: tc.color }}>
-                        {tc.emoji} {tc.label}
+                {/* Spot chips */}
+                {day.spots.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 8 }}>
+                    {day.spots.slice(0, 4).map((s) => {
+                      const tc = SPOT_TYPE_CONFIG[s.type] || SPOT_TYPE_CONFIG.other;
+                      return (
+                        <span
+                          key={s.id}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 3,
+                            padding: '3px 8px',
+                            borderRadius: 99,
+                            background: s.checked ? '#D1FAE5' : '#F3F4F6',
+                            color: s.checked ? '#065F46' : 'var(--text-secondary)',
+                            fontSize: 11,
+                            fontWeight: 500,
+                          }}
+                        >
+                          {tc.emoji} {s.name.length > 14 ? s.name.slice(0, 14) + '…' : s.name}
+                          {s.checked && <span style={{ color: 'var(--green)' }}>✓</span>}
+                        </span>
+                      );
+                    })}
+                    {day.spots.length > 4 && (
+                      <span
+                        style={{
+                          padding: '3px 8px',
+                          borderRadius: 99,
+                          background: '#F3F4F6',
+                          fontSize: 11,
+                          color: 'var(--text-muted)',
+                        }}
+                      >
+                        +{day.spots.length - 4} อื่นๆ
                       </span>
-                    );
-                  })}
-                  {day.spots.length === 0 && (
-                    <span className="text-xs text-[var(--text-muted)]">ยังไม่มีสถานที่</span>
-                  )}
-                </div>
-
-                {/* Hotel row */}
-                {day.meta?.hotelName && (
-                  <div className="flex items-center gap-2 mt-3 pt-3 border-t border-[var(--border)]">
-                    <Hotel size={13} className="text-[var(--text-muted)] flex-shrink-0"/>
-                    <span className="text-xs text-[var(--text-secondary)] truncate">{day.meta.hotelName}</span>
+                    )}
                   </div>
                 )}
+
+                {/* Hotel + date row */}
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    paddingTop: 8,
+                    borderTop: '1px solid var(--border)',
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                    <span style={{ color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+                      <IconHotel width={14} height={14} />
+                    </span>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        color: 'var(--text-secondary)',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {day.hotel?.name || 'ยังไม่มีโรงแรม'}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 12, color: 'var(--text-muted)', flexShrink: 0 }}>
+                    {day.date.getDate()}/{day.date.getMonth() + 1}
+                  </span>
+                </div>
               </div>
             </div>
           );
@@ -154,3 +339,25 @@ export default function Overview({ trip, spots, groups, dayMetas, onDaySelect }:
     </div>
   );
 }
+
+const iconBtnStyle: React.CSSProperties = {
+  width: 32,
+  height: 32,
+  borderRadius: 8,
+  border: '1px solid var(--border)',
+  background: 'white',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  color: 'var(--text-secondary)',
+  flexShrink: 0,
+};
+
+const statCardStyle: React.CSSProperties = {
+  background: 'white',
+  borderRadius: 12,
+  border: '1px solid var(--border)',
+  padding: '10px 8px',
+  textAlign: 'center',
+};

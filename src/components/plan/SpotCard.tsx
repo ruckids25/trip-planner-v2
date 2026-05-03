@@ -1,13 +1,17 @@
 'use client';
 
-import { Spot, SPOT_TYPE_CONFIG } from '@/types';
-import { Check, Clock, ExternalLink, GripVertical, Trash2, Pencil, X } from 'lucide-react';
 import { useState } from 'react';
+import { Spot, SPOT_TYPE_CONFIG } from '@/types';
+import {
+  IconCheck, IconClock, IconExternalLink, IconGrip, IconStar, IconTrash,
+} from '@/components/ui/Icons';
 
-interface SpotCardProps {
+interface Props {
   spot: Spot;
   index: number;
   dayColor: string;
+  selected?: boolean;
+  onSelect?: () => void;
   onToggleCheck: (spotId: string) => void;
   onTimeEdit: (spotId: string, time: string) => void;
   onNoteEdit?: (spotId: string, note: string) => void;
@@ -15,163 +19,332 @@ interface SpotCardProps {
   draggable?: boolean;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: () => void;
+  isDragging?: boolean;
+  isOver?: boolean;
 }
 
-const NOTE_MAX = 140;
+const MAX_NOTE = 140;
 
 export default function SpotCard({
-  spot, index, dayColor, onToggleCheck, onTimeEdit, onNoteEdit, onDelete,
-  draggable, onDragStart, onDragEnd,
-}: SpotCardProps) {
-  const [editingTime, setEditingTime] = useState(false);
-  const [time, setTime] = useState(spot.timeOverride || '');
-  const [editingNote, setEditingNote] = useState(false);
-  const [note, setNote] = useState(spot.note || '');
+  spot, index, dayColor, selected, onSelect,
+  onToggleCheck, onTimeEdit, onNoteEdit, onDelete,
+  draggable, onDragStart, onDragEnd, onDragOver, onDrop,
+  isDragging, isOver,
+}: Props) {
   const tc = SPOT_TYPE_CONFIG[spot.type] || SPOT_TYPE_CONFIG.other;
 
-  const handleTimeSubmit = () => {
-    onTimeEdit(spot.id, time);
+  const [editingTime, setEditingTime] = useState(false);
+  const [timeVal, setTimeVal] = useState(spot.timeOverride || '');
+  const [editingNote, setEditingNote] = useState(false);
+  const [noteVal, setNoteVal] = useState(spot.note || '');
+
+  const handleTimeSave = () => {
+    onTimeEdit(spot.id, timeVal);
     setEditingTime(false);
   };
 
   const handleNoteSave = () => {
-    onNoteEdit?.(spot.id, note);
+    onNoteEdit?.(spot.id, noteVal);
     setEditingNote(false);
   };
 
-  const displayTime = spot.timeOverride || spot.hours?.split('|')[0]?.trim() || '';
+  const stop = (e: React.MouseEvent | React.SyntheticEvent) => e.stopPropagation();
 
   return (
     <div
-      className="timeline-item group"
+      className="timeline-item"
       draggable={draggable}
       onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
       onDragEnd={onDragEnd}
+      style={{
+        opacity: isDragging ? 0.4 : 1,
+        transform: isOver ? 'scale(0.98)' : 'none',
+        transition: 'opacity .15s, transform .15s',
+        cursor: draggable ? 'grab' : 'default',
+      }}
     >
-      {/* Left: grip + dot */}
-      <div className="flex flex-col items-center flex-shrink-0 pt-0.5 relative">
-        {draggable && (
-          <GripVertical size={13}
-            className="text-[var(--text-muted)] mb-1 opacity-0 group-hover:opacity-100 transition-opacity cursor-grab"
-            style={{ cursor: 'grab' }}
-          />
-        )}
-        <div
-          className={`tl-dot ${spot.checked ? 'checked' : ''}`}
-          style={spot.checked ? {} : { borderColor: dayColor, color: dayColor }}
-          onClick={() => onToggleCheck(spot.id)}
-        >
-          {spot.checked ? <Check size={11} className="text-white"/> : index + 1}
-        </div>
+      {/* tl-dot — clickable check */}
+      <div
+        className={`tl-dot ${spot.checked ? 'checked' : ''}`}
+        style={{ borderColor: spot.checked ? 'var(--green)' : dayColor }}
+        onClick={(e) => { stop(e); onToggleCheck(spot.id); }}
+      >
+        {spot.checked ? <IconCheck width={14} height={14} /> : <span style={{ fontSize: 10 }}>{index + 1}</span>}
       </div>
 
-      {/* Right: card */}
+      {/* tl-card */}
       <div
-        className={`tl-card ${spot.checked ? 'opacity-60' : ''}`}
-        style={spot.checked ? { borderColor: 'var(--border)' } : {}}
+        className={`tl-card ${selected ? 'selected' : ''}`}
+        onClick={onSelect}
+        style={{ cursor: 'default' }}
       >
-        {/* Top row: type chip + name + actions */}
-        <div className="flex items-start gap-2">
-          <span className="type-chip flex-shrink-0 mt-0.5"
-            style={{ background: `${tc.color}18`, color: tc.color }}>
-            {tc.emoji} {tc.label}
-          </span>
-          <h4 className={`flex-1 text-sm font-semibold leading-snug min-w-0 ${spot.checked ? 'line-through text-[var(--text-muted)]' : 'text-[var(--text-primary)]'}`}>
-            {spot.name}
-          </h4>
-          <div className="flex items-center gap-0.5 flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-            <a href={`https://www.google.com/maps/search/?api=1&query=${spot.lat},${spot.lng}`}
-              target="_blank" rel="noopener"
-              className="p-1.5 hover:bg-[var(--accent-light)] rounded-lg text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
-              onClick={e => e.stopPropagation()}>
-              <ExternalLink size={13}/>
+        {/* Top row: emoji + chip + name + actions */}
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 6 }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+              <span style={{ fontSize: 14 }}>{tc.emoji}</span>
+              <span
+                style={{
+                  fontSize: 11,
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: 99,
+                  background: `${tc.color}18`,
+                  color: tc.color,
+                }}
+              >
+                {tc.label}
+              </span>
+              {spot.rating && (
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 2,
+                    color: '#D97706',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    marginLeft: 'auto',
+                  }}
+                >
+                  <IconStar width={12} height={12} /> {spot.rating}
+                </div>
+              )}
+            </div>
+            <p
+              style={{
+                fontSize: 14,
+                fontWeight: 600,
+                color: spot.checked ? 'var(--text-muted)' : 'var(--text-primary)',
+                textDecoration: spot.checked ? 'line-through' : 'none',
+                whiteSpace: 'nowrap',
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+              }}
+            >
+              {spot.name}
+            </p>
+          </div>
+
+          {/* Action buttons */}
+          <div
+            style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}
+            onClick={stop}
+          >
+            {draggable && (
+              <div style={{ color: 'var(--text-muted)', display: 'flex', padding: '2px 4px', cursor: 'grab', opacity: 0.5 }}>
+                <IconGrip width={14} height={14} />
+              </div>
+            )}
+            <a
+              href={`https://maps.google.com/?q=${spot.lat},${spot.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: 'var(--text-muted)',
+                display: 'flex',
+                padding: 4,
+                borderRadius: 6,
+                textDecoration: 'none',
+              }}
+            >
+              <IconExternalLink width={14} height={14} />
             </a>
             {onDelete && (
-              <button onClick={() => onDelete(spot.id)}
-                className="p-1.5 hover:bg-[var(--red-light)] rounded-lg text-[var(--text-muted)] hover:text-[var(--red)] transition-colors">
-                <Trash2 size={13}/>
+              <button
+                onClick={() => onDelete(spot.id)}
+                style={{
+                  color: '#F87171',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  padding: 4,
+                  borderRadius: 6,
+                }}
+                aria-label="Delete spot"
+              >
+                <IconTrash width={14} height={14} />
               </button>
             )}
           </div>
         </div>
 
-        {/* Time + rating row */}
-        <div className="flex items-center gap-3 mt-2">
-          {editingTime ? (
-            <div className="flex items-center gap-1.5">
-              <input value={time} onChange={e => setTime(e.target.value)}
-                placeholder="10:00"
-                className="w-20 px-2 py-1 border border-[var(--border)] rounded-lg text-xs outline-none focus:border-[var(--accent)] transition-colors"
-                onKeyDown={e => e.key === 'Enter' && handleTimeSubmit()} autoFocus/>
-              <button onClick={handleTimeSubmit}
-                className="text-xs font-semibold px-2 py-1 rounded-lg text-white"
-                style={{ background: 'var(--accent)' }}>บันทึก</button>
-              <button onClick={() => { setEditingTime(false); setTime(spot.timeOverride || ''); }}
-                className="p-1 hover:bg-[var(--bg)] rounded-lg text-[var(--text-muted)]">
-                <X size={12}/>
-              </button>
+        {/* Time + Note row */}
+        <div
+          style={{
+            marginTop: 8,
+            paddingTop: 8,
+            borderTop: '1px solid var(--border)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 6,
+          }}
+          onClick={stop}
+        >
+          {/* Time edit */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <div style={{ color: 'var(--text-muted)', display: 'flex', flexShrink: 0 }}>
+              <IconClock width={13} height={13} />
             </div>
-          ) : (
-            <button onClick={() => setEditingTime(true)}
-              className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors">
-              <Clock size={12}/>
-              <span>{displayTime || 'ตั้งเวลา'}</span>
-            </button>
-          )}
-          {spot.rating && (
-            <span className="text-xs font-semibold ml-auto"
-              style={{ color: 'var(--amber)' }}>
-              ★ {spot.rating}
-            </span>
-          )}
-        </div>
-
-        {/* Note section */}
-        {editingNote ? (
-          <div className="mt-2.5 bg-[var(--bg)] rounded-xl p-3">
-            <textarea
-              autoFocus
-              value={note}
-              onChange={e => setNote(e.target.value.slice(0, NOTE_MAX))}
-              placeholder="เพิ่มโน้ต..."
-              rows={3}
-              className="w-full text-xs text-[var(--text-primary)] bg-transparent outline-none resize-none placeholder:text-[var(--text-muted)]"
-              style={{ fontFamily: 'var(--font-body)' }}
-            />
-            <div className="flex items-center justify-between mt-2">
-              <span className="text-[10px] text-[var(--text-muted)]">{note.length}/{NOTE_MAX}</span>
-              <div className="flex gap-2">
-                <button onClick={() => { setEditingNote(false); setNote(spot.note || ''); }}
-                  className="text-xs text-[var(--text-muted)] px-2 py-1 rounded-lg hover:bg-white transition-colors">
-                  ยกเลิก
-                </button>
-                <button onClick={handleNoteSave}
-                  className="text-xs font-semibold text-white px-3 py-1 rounded-lg"
-                  style={{ background: 'var(--accent)' }}>
+            {editingTime ? (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1 }}>
+                <input
+                  type="time"
+                  value={timeVal}
+                  onChange={(e) => setTimeVal(e.target.value)}
+                  autoFocus
+                  style={{
+                    flex: 1,
+                    border: '1.5px solid var(--accent)',
+                    borderRadius: 7,
+                    padding: '4px 8px',
+                    fontSize: 13,
+                    fontFamily: 'var(--font-body)',
+                    outline: 'none',
+                  }}
+                  onKeyDown={(e) => e.key === 'Enter' && handleTimeSave()}
+                />
+                <button
+                  onClick={handleTimeSave}
+                  style={smallPrimaryBtn}
+                >
                   บันทึก
                 </button>
+                <button
+                  onClick={() => setEditingTime(false)}
+                  style={smallGhostBtn}
+                >
+                  ยกเลิก
+                </button>
               </div>
-            </div>
-          </div>
-        ) : spot.note ? (
-          <div className="mt-2 flex items-start gap-2 group/note">
-            <p className="flex-1 text-xs text-[var(--text-secondary)] bg-[var(--bg)] px-3 py-2 rounded-xl leading-relaxed">
-              {spot.note}
-            </p>
-            {onNoteEdit && (
-              <button onClick={() => setEditingNote(true)}
-                className="opacity-0 group-hover/note:opacity-100 p-1.5 hover:bg-[var(--bg)] rounded-lg text-[var(--text-muted)] transition-all flex-shrink-0">
-                <Pencil size={11}/>
+            ) : (
+              <button
+                onClick={() => { setTimeVal(spot.timeOverride || ''); setEditingTime(true); }}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  padding: 0,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: 13,
+                    fontWeight: spot.timeOverride ? 600 : 400,
+                    color: spot.timeOverride ? 'var(--text-secondary)' : 'var(--text-muted)',
+                  }}
+                >
+                  {spot.timeOverride || 'ตั้งเวลา...'}
+                </span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)', opacity: 0.6 }}>(แก้ไข)</span>
               </button>
             )}
           </div>
-        ) : onNoteEdit ? (
-          <button onClick={() => setEditingNote(true)}
-            className="mt-2 w-full text-left text-xs text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors opacity-0 group-hover:opacity-100 flex items-center gap-1">
-            <Pencil size={11}/> เพิ่มโน้ต
-          </button>
-        ) : null}
+
+          {/* Note */}
+          {editingNote ? (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <textarea
+                autoFocus
+                value={noteVal}
+                maxLength={MAX_NOTE}
+                onChange={(e) => setNoteVal(e.target.value)}
+                placeholder="เพิ่มรายละเอียด..."
+                rows={3}
+                style={{
+                  width: '100%',
+                  border: '1.5px solid var(--accent)',
+                  borderRadius: 8,
+                  padding: '8px 10px',
+                  fontSize: 13,
+                  fontFamily: 'var(--font-body)',
+                  outline: 'none',
+                  resize: 'none',
+                  color: 'var(--text-primary)',
+                  background: 'var(--bg)',
+                }}
+              />
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span
+                  style={{
+                    fontSize: 11,
+                    color: noteVal.length >= MAX_NOTE ? 'var(--red)' : 'var(--text-muted)',
+                  }}
+                >
+                  {noteVal.length}/{MAX_NOTE}
+                </span>
+                <div style={{ display: 'flex', gap: 6 }}>
+                  <button onClick={() => setEditingNote(false)} style={smallGhostBtn}>ยกเลิก</button>
+                  <button onClick={handleNoteSave} style={smallPrimaryBtn}>บันทึก</button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => { setNoteVal(spot.note || ''); setEditingNote(true); }}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                padding: 0,
+                textAlign: 'left',
+                width: '100%',
+              }}
+            >
+              {spot.note ? (
+                <p
+                  style={{
+                    fontSize: 12,
+                    color: 'var(--text-secondary)',
+                    background: '#FFFBEB',
+                    borderRadius: 6,
+                    padding: '5px 8px',
+                    border: '1px solid #FDE68A',
+                    lineHeight: 1.5,
+                  }}
+                >
+                  📝 {spot.note}
+                </p>
+              ) : (
+                <p style={{ fontSize: 12, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  + เพิ่มรายละเอียด...
+                </p>
+              )}
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );
 }
+
+const smallPrimaryBtn: React.CSSProperties = {
+  background: 'var(--accent)',
+  color: 'white',
+  border: 'none',
+  borderRadius: 7,
+  padding: '4px 12px',
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: 'pointer',
+  fontFamily: 'var(--font-body)',
+};
+
+const smallGhostBtn: React.CSSProperties = {
+  background: 'none',
+  border: '1px solid var(--border)',
+  borderRadius: 7,
+  padding: '4px 10px',
+  fontSize: 12,
+  cursor: 'pointer',
+  color: 'var(--text-muted)',
+  fontFamily: 'var(--font-body)',
+};

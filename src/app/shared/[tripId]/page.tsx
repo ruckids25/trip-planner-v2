@@ -3,14 +3,28 @@
 import { useState, useCallback, useMemo, useEffect, use } from 'react';
 import { Trip, Spot, Group, DayMeta, SPOT_TYPE_CONFIG, GROUP_COLORS } from '@/types';
 import { getTrip, getSpots, getGroups, getDayMetas, updateSpot } from '@/lib/firestore';
-import { calculateTotalDistance } from '@/lib/route-optimizer';
-import PlanMap from '@/components/plan/PlanMap';
 import {
-  MapPin, Check, Route, Calendar, MapPinned, ChevronLeft, ChevronRight,
-  LayoutGrid, Clock, ExternalLink, Pencil,
-} from 'lucide-react';
+  IconChevLeft, IconChevRight, IconClock, IconExternalLink, IconCopy, IconCheck, IconEdit,
+} from '@/components/ui/Icons';
 
-// ─── Read-only (or editable) shared trip page — no auth required ───
+const DOW_TH = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+
+function guessArea(daySpots: Spot[]): string {
+  if (daySpots.length === 0) return '';
+  const areas = daySpots
+    .map((s) => s.address || '').filter(Boolean)
+    .map((addr) => {
+      const parts = addr.split(',').map((p) => p.trim());
+      return parts.length >= 3 ? parts[parts.length - 3] : parts.length >= 2 ? parts[parts.length - 2] : parts[0];
+    })
+    .filter(Boolean);
+  const freq: Record<string, number> = {};
+  areas.forEach((a) => { freq[a] = (freq[a] || 0) + 1; });
+  const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
+  if (sorted.length === 0) return '';
+  if (sorted.length === 1) return sorted[0][0];
+  return `${sorted[0][0]}, ${sorted[1][0]}`;
+}
 
 export default function SharedTripPage({
   params,
@@ -30,18 +44,16 @@ export default function SharedTripPage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
-  const [selectedSpotId, setSelectedSpotId] = useState<string>();
-  // Mobile: toggle between list and map tabs
-
+  const [permission, setPermission] = useState<'view' | 'edit'>(isEditMode ? 'edit' : 'view');
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     async function load() {
       try {
         const t = await getTrip(tripId);
-        if (!t) { setError('Trip not found'); setLoading(false); return; }
-        if (!t.isShared) { setError('This trip is not shared'); setLoading(false); return; }
+        if (!t) { setError('ไม่พบทริปนี้'); setLoading(false); return; }
+        if (!t.isShared) { setError('ทริปนี้ไม่ได้ถูกแชร์'); setLoading(false); return; }
         setTrip(t);
-
         const [s, g, m] = await Promise.all([
           getSpots(tripId),
           getGroups(tripId),
@@ -50,9 +62,8 @@ export default function SharedTripPage({
         setSpots(s);
         setGroups(g);
         setDayMetas(m);
-      } catch (err) {
-        console.error('Failed to load shared trip:', err);
-        setError('Unable to load this trip. It may not be shared or may have been removed.');
+      } catch {
+        setError('ไม่สามารถโหลดทริปนี้ได้');
       }
       setLoading(false);
     }
@@ -67,339 +78,458 @@ export default function SharedTripPage({
   }, [trip]);
 
   const getDaySpots = useCallback((dayIdx: number) => {
-    const dayGroups = groups.filter(g => g.assignedDay === dayIdx);
-    const daySpotIds = dayGroups.flatMap(g => g.spotIds);
-    const daySpots = spots.filter(s => daySpotIds.includes(s.id));
-    return daySpots.sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
+    const dayGroups = groups.filter((g) => g.assignedDay === dayIdx);
+    const daySpotIds = dayGroups.flatMap((g) => g.spotIds);
+    return spots
+      .filter((s) => daySpotIds.includes(s.id))
+      .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999));
   }, [groups, spots]);
 
-  const getDayColor = (dayIdx: number) => GROUP_COLORS[dayIdx % GROUP_COLORS.length];
-
-  // Edit mode: toggle check
   const handleToggleCheck = useCallback(async (spotId: string) => {
     if (!isEditMode) return;
-    const spot = spots.find(s => s.id === spotId);
+    const spot = spots.find((s) => s.id === spotId);
     if (!spot) return;
     const newChecked = !spot.checked;
-    setSpots(prev => prev.map(s => s.id === spotId ? { ...s, checked: newChecked } : s));
+    setSpots((prev) => prev.map((s) => (s.id === spotId ? { ...s, checked: newChecked } : s)));
     try {
       await updateSpot(tripId, spotId, { checked: newChecked });
-    } catch (e) {
-      // revert on failure
-      setSpots(prev => prev.map(s => s.id === spotId ? { ...s, checked: !newChecked } : s));
+    } catch {
+      setSpots((prev) => prev.map((s) => (s.id === spotId ? { ...s, checked: !newChecked } : s)));
     }
   }, [isEditMode, spots, tripId]);
 
-  // Edit mode: update time
-  const handleTimeEdit = useCallback(async (spotId: string, time: string) => {
-    if (!isEditMode) return;
-    setSpots(prev => prev.map(s => s.id === spotId ? { ...s, timeOverride: time } : s));
-    try {
-      await updateSpot(tripId, spotId, { timeOverride: time });
-    } catch (e) {
-      console.error('Failed to update time', e);
-    }
-  }, [isEditMode, tripId]);
+  const shareUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}/shared/${tripId}${permission === 'edit' ? '?mode=edit' : ''}`
+    : '';
 
-  // ─── Loading / Error ───
+  const handleCopy = async () => {
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Some embedded browsers block clipboard; we silently no-op.
+    }
+  };
+
+  // ── Loading / Error ────────────────────────────────
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-gray-500 text-sm">Loading trip...</p>
+      <>
+        <div className="app-page" style={{ alignItems: 'center', justifyContent: 'center', display: 'flex' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
+            <div
+              style={{
+                width: 28,
+                height: 28,
+                border: '3px solid var(--accent)',
+                borderTopColor: 'transparent',
+                borderRadius: '50%',
+                animation: 'spin .7s linear infinite',
+              }}
+            />
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>กำลังโหลดทริป...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   if (error || !trip) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
-        <div className="text-center max-w-md px-6">
-          <div className="w-16 h-16 mx-auto mb-4 bg-red-50 rounded-full flex items-center justify-center">
-            <MapPin size={24} className="text-red-400" />
+      <>
+        <div className="app-page" style={{ alignItems: 'center', justifyContent: 'center', display: 'flex' }}>
+          <div style={{ textAlign: 'center', maxWidth: 320, padding: 24 }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>🔒</div>
+            <h2 style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>ไม่สามารถเข้าถึงทริปได้</h2>
+            <p style={{ fontSize: 13, color: 'var(--text-muted)' }}>{error || 'ไม่พบทริปนี้'}</p>
           </div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Cannot access trip</h2>
-          <p className="text-sm text-gray-500">{error || 'Trip not found'}</p>
         </div>
-      </div>
+      </>
     );
   }
 
-  // ─── Area guesser ───
-  function guessArea(daySpots: Spot[]): string {
-    if (daySpots.length === 0) return '';
-    const areas = daySpots
-      .map(s => s.address || '').filter(Boolean)
-      .map(addr => {
-        const parts = addr.split(',').map(p => p.trim());
-        return parts.length >= 3 ? parts[parts.length - 3] : parts.length >= 2 ? parts[parts.length - 2] : parts[0];
-      }).filter(Boolean);
-    const freq: Record<string, number> = {};
-    areas.forEach(a => { freq[a] = (freq[a] || 0) + 1; });
-    const sorted = Object.entries(freq).sort((a, b) => b[1] - a[1]);
-    if (sorted.length === 0) return '';
-    if (sorted.length === 1) return sorted[0][0];
-    return `${sorted[0][0]}, ${sorted[1][0]}`;
-  }
-
-  // ─── Overview mode ───
-  if (selectedDay === null) {
-    const startDate = new Date(trip.startDate);
-    const checkedCount = spots.filter(s => s.checked).length;
-    const totalDistance = calculateTotalDistance(spots);
-
-    const days = Array.from({ length: totalDays }, (_, i) => {
-      const date = new Date(startDate);
-      date.setDate(date.getDate() + i);
-      const dayGroups = groups.filter(g => g.assignedDay === i);
-      const daySpotIds = dayGroups.flatMap(g => g.spotIds);
-      const daySpots = spots.filter(s => daySpotIds.includes(s.id));
-      const dayChecked = daySpots.filter(s => s.checked).length;
-      const meta = dayMetas.find(m => m.dayIdx === i);
-      const area = meta?.area || guessArea(daySpots);
-      const description = meta?.description || '';
-      return { date, dayIdx: i, spots: daySpots, checked: dayChecked, groups: dayGroups, area, description };
-    });
+  // ── Day detail view ───────────────────────────────
+  if (selectedDay !== null) {
+    const daySpots = getDaySpots(selectedDay);
+    const color = GROUP_COLORS[selectedDay % GROUP_COLORS.length];
+    const dayDate = new Date(trip.startDate);
+    dayDate.setDate(dayDate.getDate() + selectedDay);
+    const meta = dayMetas.find((m) => m.dayIdx === selectedDay);
+    const area = meta?.area || guessArea(daySpots);
 
     return (
-      <div className="min-h-screen bg-gray-50">
-        {/* Header */}
-        <div className="bg-white border-b border-gray-100 px-4 py-4">
-          <div className="max-w-5xl mx-auto">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-blue-500 font-medium mb-1">Shared Trip Plan</p>
-                <h1 className="text-xl font-bold text-gray-900">{trip.title}</h1>
-                <p className="text-sm text-gray-500">{trip.country} · {trip.startDate} — {trip.endDate}</p>
-              </div>
-              {isEditMode && (
-                <span className="flex items-center gap-1.5 px-3 py-1.5 bg-orange-50 text-orange-600 rounded-xl text-xs font-semibold border border-orange-200">
-                  <Pencil size={12} /> Edit Mode
-                </span>
-              )}
-            </div>
+      <>
+        <div className="app-page">
+          <div
+            style={{
+              padding: '14px 16px',
+              background: 'white',
+              borderBottom: '1px solid var(--border)',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 10,
+            }}
+          >
+            <button
+              onClick={() => setSelectedDay(null)}
+              style={{
+                background: 'none',
+                border: 'none',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                display: 'flex',
+              }}
+            >
+              <IconChevLeft />
+            </button>
+            <span
+              style={{
+                background: color,
+                color: 'white',
+                fontSize: 12,
+                fontWeight: 700,
+                padding: '2px 10px',
+                borderRadius: 99,
+              }}
+            >
+              วันที่ {selectedDay + 1}
+            </span>
+            <span style={{ fontWeight: 700, fontSize: 15, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              {area}
+            </span>
+            {isEditMode && (
+              <span
+                style={{
+                  marginLeft: 'auto',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '3px 8px',
+                  background: 'var(--amber-light)',
+                  color: '#92400E',
+                  borderRadius: 99,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  border: '1px solid #FDE68A',
+                }}
+              >
+                <IconEdit width={11} height={11} /> แก้ไข
+              </span>
+            )}
           </div>
-        </div>
 
-        <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {days.map(day => {
-              const progress = day.spots.length > 0 ? (day.checked / day.spots.length) * 100 : 0;
-              const dayOfWeek = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][day.date.getDay()];
+          <div style={{ padding: '14px 16px' }}>
+            {daySpots.map((spot, i) => {
+              const tc = SPOT_TYPE_CONFIG[spot.type] || SPOT_TYPE_CONFIG.other;
               return (
                 <div
-                  key={day.dayIdx}
-                  className="bg-white rounded-xl border border-gray-100 p-4 hover:shadow-md transition-all cursor-pointer"
-                  onClick={() => { setSelectedDay(day.dayIdx); }}
+                  key={spot.id}
+                  style={{
+                    background: 'white',
+                    borderRadius: 12,
+                    border: '1px solid var(--border)',
+                    padding: '12px 14px',
+                    marginBottom: 10,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                  }}
                 >
-                  <div className="flex items-center justify-between mb-1">
-                    <div>
-                      <span className="text-sm font-bold text-gray-900">Day {day.dayIdx + 1}</span>
-                      <span className="text-xs text-gray-400 ml-2">{dayOfWeek} {day.date.getDate()}/{day.date.getMonth() + 1}</span>
-                    </div>
-                    <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
-                      {day.spots.length} spots
-                    </span>
-                  </div>
-                  {day.area && (
-                    <p className="text-xs text-blue-500 flex items-center gap-1 mb-2">
-                      <MapPinned size={11} /> {day.area}
+                  <button
+                    onClick={() => handleToggleCheck(spot.id)}
+                    disabled={!isEditMode}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 99,
+                      background: spot.checked ? 'var(--green)' : color,
+                      color: 'white',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 12,
+                      fontWeight: 700,
+                      flexShrink: 0,
+                      border: 'none',
+                      cursor: isEditMode ? 'pointer' : 'default',
+                    }}
+                  >
+                    {spot.checked ? <IconCheck width={14} height={14} /> : i + 1}
+                  </button>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                        textDecoration: spot.checked ? 'line-through' : 'none',
+                        color: spot.checked ? 'var(--text-muted)' : 'var(--text-primary)',
+                      }}
+                    >
+                      {tc.emoji} {spot.name}
                     </p>
-                  )}
-                  {day.description && (
-                    <p className="text-xs text-gray-400 mb-2 line-clamp-2">{day.description}</p>
-                  )}
-                  <div className="w-full h-1.5 bg-gray-100 rounded-full mb-3 overflow-hidden">
-                    <div className="h-full bg-green-400 rounded-full transition-all" style={{ width: `${progress}%` }} />
+                    {spot.timeOverride && (
+                      <p
+                        style={{
+                          fontSize: 12,
+                          color: 'var(--text-muted)',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 4,
+                          marginTop: 2,
+                        }}
+                      >
+                        <IconClock width={10} height={10} /> {spot.timeOverride}
+                      </p>
+                    )}
                   </div>
-                  <div className="flex flex-wrap gap-1">
-                    {day.groups.map(g => (
-                      <span key={g.id} className="text-xs text-white px-2 py-0.5 rounded-full" style={{ background: g.color }}>
-                        {g.label}
+                  <a
+                    href={`https://maps.google.com/?q=${spot.lat},${spot.lng}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: 'var(--text-muted)', display: 'flex' }}
+                  >
+                    <IconExternalLink width={14} height={14} />
+                  </a>
+                </div>
+              );
+            })}
+            {daySpots.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '32px 16px', color: 'var(--text-muted)' }}>
+                <p style={{ fontSize: 14 }}>ยังไม่มีสถานที่สำหรับวันนี้</p>
+              </div>
+            )}
+          </div>
+        </div>
+      </>
+    );
+  }
+
+  // ── Share landing (default) ───────────────────────
+  return (
+    <>
+      <div className="app-page">
+        {/* Header */}
+        <div style={{ padding: '20px 20px 16px', background: 'white', borderBottom: '1px solid var(--border)' }}>
+          <p
+            style={{
+              fontSize: 11,
+              color: 'var(--text-muted)',
+              fontWeight: 600,
+              textTransform: 'uppercase',
+              letterSpacing: 1,
+              marginBottom: 4,
+            }}
+          >
+            แชร์ทริป
+          </p>
+          <h1 style={{ fontSize: 20, fontWeight: 700, fontFamily: 'var(--font-head)' }}>{trip.title}</h1>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginTop: 2 }}>
+            {trip.country} · {totalDays} วัน · {spots.length} สถานที่
+          </p>
+        </div>
+
+        <div style={{ padding: 16 }}>
+          {/* Permission toggle */}
+          <div
+            style={{
+              background: 'var(--bg)',
+              borderRadius: 12,
+              padding: 4,
+              display: 'flex',
+              gap: 4,
+              marginBottom: 16,
+              border: '1px solid var(--border)',
+            }}
+          >
+            {[{ id: 'view' as const, label: '👁 ดูอย่างเดียว' }, { id: 'edit' as const, label: '✏️ แก้ไขได้' }].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setPermission(p.id)}
+                style={{
+                  flex: 1,
+                  padding: 10,
+                  borderRadius: 9,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: permission === p.id ? 'white' : 'transparent',
+                  color: permission === p.id ? 'var(--accent)' : 'var(--text-muted)',
+                  fontWeight: permission === p.id ? 700 : 500,
+                  fontSize: 14,
+                  fontFamily: 'var(--font-body)',
+                  boxShadow: permission === p.id ? 'var(--shadow-sm)' : 'none',
+                  transition: 'all .15s',
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Link copy */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+              ลิงก์แชร์ ({permission === 'view' ? 'ดูอย่างเดียว' : 'แก้ไขได้'})
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div
+                style={{
+                  flex: 1,
+                  background: 'var(--bg)',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  fontSize: 13,
+                  color: 'var(--text-secondary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                {shareUrl}
+              </div>
+              <button
+                onClick={handleCopy}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: copied ? 'var(--green)' : 'var(--accent)',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  transition: 'background .2s',
+                  fontFamily: 'var(--font-body)',
+                }}
+              >
+                {copied ? <><IconCheck width={14} height={14} />คัดลอกแล้ว!</> : <><IconCopy width={14} height={14} />คัดลอก</>}
+              </button>
+            </div>
+          </div>
+
+          {/* Share via */}
+          <p className="section-label" style={{ marginBottom: 10 }}>แชร์ผ่าน</p>
+          <div style={{ display: 'flex', gap: 10, marginBottom: 20 }}>
+            {[
+              { label: 'LINE', bg: '#06C755', icon: '💬', href: `https://line.me/R/msg/text/?${encodeURIComponent(shareUrl)}` },
+              { label: 'อีเมล', bg: '#EA4335', icon: '📧', href: `mailto:?subject=${encodeURIComponent(trip.title)}&body=${encodeURIComponent(shareUrl)}` },
+              { label: 'IG', bg: '#E1306C', icon: '📸', href: shareUrl },
+            ].map((s) => (
+              <a
+                key={s.label}
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  flex: 1,
+                  padding: '10px 0',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: `${s.bg}18`,
+                  color: s.bg,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-body)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                  textDecoration: 'none',
+                }}
+              >
+                <span style={{ fontSize: 20 }}>{s.icon}</span>
+                {s.label}
+              </a>
+            ))}
+          </div>
+
+          {/* Day preview list */}
+          <p className="section-label" style={{ marginBottom: 10 }}>วันในทริป</p>
+          <div
+            style={{
+              border: '1.5px solid var(--border)',
+              borderRadius: 14,
+              overflow: 'hidden',
+              background: 'white',
+            }}
+          >
+            {Array.from({ length: totalDays }, (_, i) => {
+              const dayGroups = groups.filter((g) => g.assignedDay === i);
+              const daySpotIds = dayGroups.flatMap((g) => g.spotIds);
+              const daySpots = spots.filter((s) => daySpotIds.includes(s.id));
+              const meta = dayMetas.find((m) => m.dayIdx === i);
+              const area = meta?.area || guessArea(daySpots) || `วันที่ ${i + 1}`;
+              const date = new Date(trip.startDate);
+              date.setDate(date.getDate() + i);
+              const tc = daySpots[0] ? SPOT_TYPE_CONFIG[daySpots[0].type] : null;
+              const color = GROUP_COLORS[i % GROUP_COLORS.length];
+              return (
+                <div
+                  key={i}
+                  onClick={() => setSelectedDay(i)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 10,
+                    padding: '10px 12px',
+                    borderBottom: i < totalDays - 1 ? '1px solid var(--border)' : 'none',
+                    cursor: 'pointer',
+                    background: 'white',
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 38,
+                      height: 38,
+                      borderRadius: 10,
+                      flexShrink: 0,
+                      background: `${color}15`,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      fontSize: 20,
+                    }}
+                  >
+                    {tc?.emoji || '📍'}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {area}
+                    </p>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
+                        วันที่ {i + 1} · {DOW_TH[date.getDay()]}
                       </span>
-                    ))}
+                      <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--border)' }} />
+                      <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{daySpots.length} จุด</span>
+                    </div>
+                  </div>
+                  <div style={{ color: 'var(--text-muted)', display: 'flex' }}>
+                    <IconChevRight />
                   </div>
                 </div>
               );
             })}
           </div>
-
-          {/* Trip Summary */}
-          <div className="bg-gradient-to-r from-blue-50 to-purple-50 rounded-2xl border border-blue-100 p-5">
-            <h3 className="text-sm font-semibold text-gray-700 mb-3">Trip Summary</h3>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {[
-                { icon: <Calendar size={18} />, label: 'Days', value: totalDays, bg: 'bg-blue-100', text: 'text-blue-600' },
-                { icon: <MapPin size={18} />, label: 'Places', value: spots.length, bg: 'bg-purple-100', text: 'text-purple-600' },
-                { icon: <Check size={18} />, label: 'Visited', value: `${checkedCount}/${spots.length}`, bg: 'bg-green-100', text: 'text-green-600' },
-                { icon: <Route size={18} />, label: 'Distance', value: `${totalDistance.toFixed(1)} km`, bg: 'bg-orange-100', text: 'text-orange-600' },
-              ].map(stat => (
-                <div key={stat.label} className="bg-white/80 rounded-xl p-3 text-center">
-                  <div className={`w-8 h-8 mx-auto rounded-lg ${stat.bg} ${stat.text} flex items-center justify-center mb-2`}>{stat.icon}</div>
-                  <p className="text-lg font-bold text-gray-900">{stat.value}</p>
-                  <p className="text-xs text-gray-500">{stat.label}</p>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
       </div>
-    );
-  }
-
-  // ─── Day detail view ───
-  const daySpots = getDaySpots(selectedDay);
-  const dayColor = getDayColor(selectedDay);
-  const dayDate = new Date(trip.startDate);
-  dayDate.setDate(dayDate.getDate() + selectedDay);
-  const meta = dayMetas.find(m => m.dayIdx === selectedDay);
-  const area = meta?.area || guessArea(daySpots);
-
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Day header */}
-      <div className="bg-white border-b border-gray-100 px-4 py-3 flex-shrink-0">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSelectedDay(null)}
-              className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
-            >
-              <LayoutGrid size={18} className="text-gray-500" />
-            </button>
-            <button
-              onClick={() => setSelectedDay(Math.max(0, selectedDay - 1))}
-              disabled={selectedDay === 0}
-              className="p-1 hover:bg-gray-100 rounded disabled:opacity-30"
-            >
-              <ChevronLeft size={18} className="text-gray-500" />
-            </button>
-            <div>
-              <h3 className="font-bold text-gray-900">Day {selectedDay + 1}</h3>
-              <p className="text-xs text-gray-500">
-                {dayDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                {' · '}{daySpots.length} spots
-              </p>
-            </div>
-            <button
-              onClick={() => setSelectedDay(Math.min(totalDays - 1, selectedDay + 1))}
-              disabled={selectedDay >= totalDays - 1}
-              className="p-1 hover:bg-gray-100 rounded disabled:opacity-30"
-            >
-              <ChevronRight size={18} className="text-gray-500" />
-            </button>
-          </div>
-          <div className="flex items-center gap-2">
-            {area && (
-              <p className="hidden sm:flex text-xs text-blue-500 items-center gap-1">
-                <MapPinned size={12} /> {area}
-              </p>
-            )}
-            {isEditMode && (
-              <span className="flex items-center gap-1 px-2 py-1 bg-orange-50 text-orange-600 rounded-lg text-xs font-semibold border border-orange-200">
-                <Pencil size={11} /> Editing
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-      {/* Content */}
-      <div className="flex-1 max-w-6xl w-full mx-auto px-4 py-4 flex gap-4 overflow-hidden" style={{ height: 'calc(100vh - 7rem)' }}>
-
-        {/* Spot list — hidden on mobile when map tab is active */}
-        <div className={"flex-1 md:flex-none md:w-96 md:flex-shrink-0 overflow-y-auto order-2 md:order-1 bg-gray-50"}>
-          {daySpots.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400 text-sm">No spots assigned to this day.</p>
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {daySpots.map((spot, i) => (
-                <div
-                  key={spot.id}
-                  onClick={() => { setSelectedSpotId(spot.id);  }}
-                  className={`bg-white rounded-xl border p-3 cursor-pointer transition-all ${
-                    selectedSpotId === spot.id ? 'border-blue-300 shadow-md' : 'border-gray-100 hover:shadow-sm'
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        {/* Number badge */}
-                        <span
-                          className="w-5 h-5 rounded-full text-white text-xs font-bold flex items-center justify-center flex-shrink-0"
-                          style={{ background: dayColor }}
-                        >
-                          {i + 1}
-                        </span>
-                        <span className="text-sm">{SPOT_TYPE_CONFIG[spot.type]?.emoji || '📍'}</span>
-                        <span className="font-medium text-sm text-gray-900 truncate">{spot.name}</span>
-                        {spot.checked && <Check size={14} className="text-green-500 flex-shrink-0" />}
-                      </div>
-                      {/* Time — editable in edit mode */}
-                      {isEditMode ? (
-                        <div className="flex items-center gap-1 mb-1" onClick={e => e.stopPropagation()}>
-                          <Clock size={10} className="text-gray-400" />
-                          <input
-                            type="time"
-                            defaultValue={spot.timeOverride || ''}
-                            onBlur={e => handleTimeEdit(spot.id, e.target.value)}
-                            className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-300"
-                          />
-                        </div>
-                      ) : spot.timeOverride ? (
-                        <p className="text-xs text-gray-400 flex items-center gap-1">
-                          <Clock size={10} /> {spot.timeOverride}
-                        </p>
-                      ) : null}
-                      {spot.address && (
-                        <p className="text-xs text-gray-400 mt-0.5 truncate">{spot.address}</p>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-1 flex-shrink-0">
-                      {/* Check toggle in edit mode */}
-                      {isEditMode && (
-                        <button
-                          onClick={e => { e.stopPropagation(); handleToggleCheck(spot.id); }}
-                          className={`p-1.5 rounded-lg transition-colors ${
-                            spot.checked
-                              ? 'bg-green-100 text-green-600 hover:bg-green-200'
-                              : 'bg-gray-100 text-gray-400 hover:bg-gray-200'
-                          }`}
-                          title={spot.checked ? 'Mark unvisited' : 'Mark visited'}
-                        >
-                          <Check size={14} />
-                        </button>
-                      )}
-                      <a
-                        href={`https://www.google.com/maps/search/?api=1&query=${spot.lat},${spot.lng}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        onClick={e => e.stopPropagation()}
-                        className="p-1.5 hover:bg-gray-100 rounded-lg text-gray-300 hover:text-blue-500 transition-colors"
-                      >
-                        <ExternalLink size={14} />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* Map — hidden on mobile when list tab is active */}
-        <div className={"h-[260px] md:h-auto md:flex-1 flex-shrink-0 order-1 md:order-2 rounded-xl overflow-hidden border border-gray-200"}>
-          <PlanMap
-            spots={daySpots}
-            dayColor={dayColor}
-            selectedSpotId={selectedSpotId}
-            onSpotSelect={id => { setSelectedSpotId(id); }}
-          />
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

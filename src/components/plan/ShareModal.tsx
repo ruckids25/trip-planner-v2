@@ -1,109 +1,237 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { Trip } from '@/types';
 import { setTripShared } from '@/lib/firestore';
-import Modal from '@/components/ui/Modal';
-import { Copy, Check, Link as LinkIcon, Mail, Eye, Pencil } from 'lucide-react';
+import { useToast } from '@/components/ui/Toast';
+import { IconCheck, IconCopy, IconX } from '@/components/ui/Icons';
 
-interface ShareModalProps {
+interface Props {
   trip: Trip;
   open: boolean;
   onClose: () => void;
 }
 
-export default function ShareModal({ trip, open, onClose }: ShareModalProps) {
-  const [copied, setCopied] = useState(false);
+/**
+ * In-app share modal — bottom sheet with permission toggle, copy link,
+ * and LINE / Email / IG share buttons.
+ *
+ * Flips `trip.isShared` in Firestore when the user opens this modal so the
+ * `/shared/[tripId]` route allows access.
+ */
+export default function ShareModal({ trip, open, onClose }: Props) {
+  const { toast } = useToast();
   const [permission, setPermission] = useState<'view' | 'edit'>('view');
+  const [copied, setCopied] = useState(false);
 
-  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-  const shareUrl = `${baseUrl}/shared/${trip.id}${permission === 'edit' ? '?mode=edit' : ''}`;
-
-  // Auto-enable sharing when modal opens (mark trip as shared in Firestore)
+  // Flip isShared on open the first time
   useEffect(() => {
     if (open && !trip.isShared) {
-      setTripShared(trip.id, true).catch(console.error);
+      setTripShared(trip.id, true).catch(() => {
+        toast('เปิดการแชร์ไม่สำเร็จ', 'error');
+      });
     }
-  }, [open, trip.id, trip.isShared]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
+
+  const shareUrl =
+    typeof window !== 'undefined'
+      ? `${window.location.origin}/shared/${trip.id}${permission === 'edit' ? '?mode=edit' : ''}`
+      : '';
 
   const handleCopy = async () => {
-    await navigator.clipboard.writeText(shareUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (!shareUrl) return;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      toast('คัดลอกลิงก์แล้ว!', 'success');
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast('คัดลอกไม่สำเร็จ', 'error');
+    }
   };
 
   return (
-    <Modal open={open} onClose={onClose} title="Share Trip">
-      <div className="space-y-4">
-        <div>
-          <p className="text-sm text-gray-600 mb-3">
-            Share this link with friends so they can access <strong>{trip.title}</strong>.
-          </p>
+    <>
+      <div className={`sheet-overlay ${open ? 'open' : ''}`} onClick={onClose} />
+      <div className={`bottom-sheet ${open ? 'open' : ''}`}>
+        <div className="sheet-handle" />
 
-          {/* Permission toggle */}
-          <div className="flex items-center gap-1 bg-gray-100 rounded-xl p-1 mb-3">
-            <button
-              onClick={() => { setPermission('view'); setCopied(false); }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-                permission === 'view'
-                  ? 'bg-white text-blue-600 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Eye size={14} /> View Only
-            </button>
-            <button
-              onClick={() => { setPermission('edit'); setCopied(false); }}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-lg text-sm font-medium transition-all ${
-                permission === 'edit'
-                  ? 'bg-white text-orange-600 shadow-sm'
-                  : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >
-              <Pencil size={14} /> Can Edit
-            </button>
-          </div>
-
-          <p className="text-xs text-gray-400 mb-2">
-            {permission === 'view'
-              ? 'Recipients can view the trip plan but cannot make changes.'
-              : 'Recipients can view and edit spots, times, and notes.'}
-          </p>
-
-          <div className="flex items-center gap-2">
-            <div className="flex-1 flex items-center gap-2 bg-gray-50 rounded-xl px-4 py-2.5 border border-gray-200">
-              <LinkIcon size={14} className="text-gray-400" />
-              <span className="text-sm text-gray-600 truncate">{shareUrl}</span>
+        <div style={{ padding: '20px 20px 40px' }}>
+          {/* Header */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div>
+              <p
+                style={{
+                  fontSize: 11,
+                  color: 'var(--text-muted)',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: 1,
+                  marginBottom: 4,
+                }}
+              >
+                แชร์ทริป
+              </p>
+              <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-head)' }}>{trip.title}</h2>
             </div>
             <button
-              onClick={handleCopy}
-              className={`p-2.5 rounded-xl transition-colors ${
-                copied ? 'bg-green-100 text-green-600' : 'bg-blue-50 text-blue-500 hover:bg-blue-100'
-              }`}
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}
+              aria-label="ปิด"
             >
-              {copied ? <Check size={18} /> : <Copy size={18} />}
+              <IconX />
             </button>
           </div>
-        </div>
 
-        <div className="border-t border-gray-100 pt-4">
-          <p className="text-xs text-gray-500 mb-3">Or share via:</p>
-          <div className="flex gap-2">
-            <button
-              onClick={() => window.open(`mailto:?subject=${encodeURIComponent(trip.title)}&body=${encodeURIComponent(`Check out my trip plan: ${shareUrl}`)}`, '_blank')}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-100 rounded-xl text-sm text-gray-700 hover:bg-gray-200 transition-colors"
-            >
-              <Mail size={14} /> Email
-            </button>
-            <button
-              onClick={() => window.open(`https://line.me/R/msg/text/?${encodeURIComponent(`${trip.title}\n${shareUrl}`)}`, '_blank')}
-              className="flex items-center gap-2 px-4 py-2 bg-green-100 rounded-xl text-sm text-green-700 hover:bg-green-200 transition-colors"
-            >
-              LINE
-            </button>
+          {/* Permission toggle */}
+          <div
+            style={{
+              background: 'var(--bg)',
+              borderRadius: 12,
+              padding: 4,
+              display: 'flex',
+              gap: 4,
+              marginBottom: 16,
+              border: '1px solid var(--border)',
+            }}
+          >
+            {[
+              { id: 'view' as const, label: '👁 ดูอย่างเดียว' },
+              { id: 'edit' as const, label: '✏️ แก้ไขได้' },
+            ].map((p) => (
+              <button
+                key={p.id}
+                onClick={() => setPermission(p.id)}
+                style={{
+                  flex: 1,
+                  padding: 10,
+                  borderRadius: 9,
+                  border: 'none',
+                  cursor: 'pointer',
+                  background: permission === p.id ? 'white' : 'transparent',
+                  color: permission === p.id ? 'var(--accent)' : 'var(--text-muted)',
+                  fontWeight: permission === p.id ? 700 : 500,
+                  fontSize: 14,
+                  fontFamily: 'var(--font-body)',
+                  boxShadow: permission === p.id ? 'var(--shadow-sm)' : 'none',
+                  transition: 'all .15s',
+                }}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Link copy */}
+          <div className="card" style={{ padding: 14, marginBottom: 14 }}>
+            <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 8 }}>
+              ลิงก์แชร์ ({permission === 'view' ? 'ดูอย่างเดียว' : 'แก้ไขได้'})
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <div
+                style={{
+                  flex: 1,
+                  background: 'var(--bg)',
+                  borderRadius: 8,
+                  padding: '10px 12px',
+                  fontSize: 13,
+                  color: 'var(--text-secondary)',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  border: '1px solid var(--border)',
+                }}
+              >
+                {shareUrl}
+              </div>
+              <button
+                onClick={handleCopy}
+                style={{
+                  padding: '10px 14px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: copied ? 'var(--green)' : 'var(--accent)',
+                  color: 'white',
+                  cursor: 'pointer',
+                  fontWeight: 600,
+                  fontSize: 13,
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  transition: 'background .2s',
+                  fontFamily: 'var(--font-body)',
+                  flexShrink: 0,
+                }}
+              >
+                {copied ? (
+                  <>
+                    <IconCheck width={14} height={14} />
+                    คัดลอกแล้ว!
+                  </>
+                ) : (
+                  <>
+                    <IconCopy width={14} height={14} />
+                    คัดลอก
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+
+          {/* Share via */}
+          <p className="section-label" style={{ marginBottom: 10 }}>แชร์ผ่าน</p>
+          <div style={{ display: 'flex', gap: 10 }}>
+            {[
+              {
+                label: 'LINE',
+                bg: '#06C755',
+                icon: '💬',
+                href: `https://line.me/R/msg/text/?${encodeURIComponent(shareUrl)}`,
+              },
+              {
+                label: 'อีเมล',
+                bg: '#EA4335',
+                icon: '📧',
+                href: `mailto:?subject=${encodeURIComponent(trip.title)}&body=${encodeURIComponent(shareUrl)}`,
+              },
+              {
+                label: 'IG',
+                bg: '#E1306C',
+                icon: '📸',
+                href: shareUrl,
+              },
+            ].map((s) => (
+              <a
+                key={s.label}
+                href={s.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  flex: 1,
+                  padding: '10px 0',
+                  borderRadius: 10,
+                  border: 'none',
+                  background: `${s.bg}18`,
+                  color: s.bg,
+                  fontWeight: 700,
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  fontFamily: 'var(--font-body)',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: 4,
+                  textDecoration: 'none',
+                }}
+              >
+                <span style={{ fontSize: 20 }}>{s.icon}</span>
+                {s.label}
+              </a>
+            ))}
           </div>
         </div>
       </div>
-    </Modal>
+    </>
   );
 }

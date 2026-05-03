@@ -1,312 +1,478 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useAuthContext } from '@/components/auth/AuthProvider';
 import AuthGuard from '@/components/auth/AuthGuard';
-import EmptyState from '@/components/ui/EmptyState';
+import { useAuthContext } from '@/components/auth/AuthProvider';
 import { useUserTrips } from '@/hooks/useTrip';
+import { createTrip } from '@/lib/firestore';
 import { useToast } from '@/components/ui/Toast';
-import { createTrip, deleteTrip } from '@/lib/firestore';
-import { MapPin, Plus, Trash2, ChevronRight, LogOut } from 'lucide-react';
 import { Trip } from '@/types';
-import { signOut } from 'firebase/auth';
-import { auth } from '@/lib/firebase';
+import BottomNav from '@/components/ui/BottomNav';
+import CollabAvatars from '@/components/ui/CollabAvatars';
+import { IconPlus, IconChevRight, IconX } from '@/components/ui/Icons';
 
-const TRIP_EMOJIS = ['🗼','🌸','⛩️','🏯','🗾','🌊','🗻','🎌','🍜','🍣','🏝️','🎆'];
-const DAY_COLORS = ['#4F46E5','#0891B2','#059669','#D97706','#DC2626','#7C3AED','#DB2777','#EA580C'];
+const TRIP_EMOJIS = ['🗾','🇹🇭','🗼','⛩️','🏔️','🌏','🏝️','🌄','🎡','🏙️','🌃','🎌','🌺','🍜','🚂'];
+const DAY_COLORS = ['#4F46E5','#0891B2','#059669','#D97706','#DC2626','#7C3AED','#DB2777'];
 
-function getGreeting() {
+function greet() {
   const h = new Date().getHours();
-  if (h < 12) return 'อรุณสวัสดิ์';
-  if (h < 17) return 'สวัสดีตอนบ่าย';
-  return 'สวัสดีตอนเย็น';
+  if (h < 12) return 'สวัสดีตอนเช้า ☀️';
+  if (h < 17) return 'สวัสดีตอนบ่าย 🌤️';
+  if (h < 19) return 'สวัสดีตอนเย็น 🌇';
+  return 'สวัสดีตอนค่ำ 🌙';
 }
 
-function dayCount(start: string, end: string) {
-  return Math.max(1, Math.ceil((new Date(end).getTime() - new Date(start).getTime()) / 86400000) + 1);
+function daysBetween(a: string, b: string) {
+  const d = (new Date(b).getTime() - new Date(a).getTime()) / 86400000;
+  return Math.max(1, Math.ceil(d) + 1);
 }
 
-function TripCard({ trip, onClick, onDelete }: { trip: Trip; onClick: () => void; onDelete: () => void }) {
-  const days = dayCount(trip.startDate, trip.endDate);
-  const colorIdx = trip.title.charCodeAt(0) % DAY_COLORS.length;
-  const color = DAY_COLORS[colorIdx];
-  const emoji = TRIP_EMOJIS[trip.title.charCodeAt(0) % TRIP_EMOJIS.length];
-
-  return (
-    <div
-      onClick={onClick}
-      className="group relative flex items-center gap-4 bg-white rounded-2xl border border-[var(--border)] p-4 cursor-pointer hover:shadow-md transition-all"
-      style={{ boxShadow: 'var(--shadow-sm)' }}
-    >
-      {/* Color bar */}
-      <div className="absolute left-0 top-3 bottom-3 w-1 rounded-r-full" style={{ background: color }}/>
-      {/* Emoji */}
-      <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-2xl flex-shrink-0"
-        style={{ background: `${color}18` }}>
-        {emoji}
-      </div>
-      <div className="flex-1 min-w-0">
-        <p className="font-bold text-[var(--text-primary)] truncate" style={{ fontFamily: 'var(--font-head)' }}>
-          {trip.title}
-        </p>
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs text-[var(--text-muted)] flex items-center gap-1">
-            <MapPin size={11}/>{trip.country}
-          </span>
-          <span className="text-[var(--border)]">·</span>
-          <span className="text-xs text-[var(--text-muted)]">{days} วัน</span>
-        </div>
-        <p className="text-xs text-[var(--text-muted)] mt-0.5">{trip.startDate} — {trip.endDate}</p>
-      </div>
-      <div className="flex items-center gap-1">
-        <button
-          onClick={e => { e.stopPropagation(); onDelete(); }}
-          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-red-50 text-[var(--text-muted)] hover:text-[var(--red)] transition-all"
-        >
-          <Trash2 size={15}/>
-        </button>
-        <ChevronRight size={18} className="text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors"/>
-      </div>
-    </div>
-  );
+function thaiShortDate(iso: string) {
+  const months = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+  const d = new Date(iso);
+  return `${d.getDate()} ${months[d.getMonth()]}`;
 }
 
-function NewTripModal({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: (id: string) => void }) {
-  const { user } = useAuthContext();
-  const { toast } = useToast();
-  const [form, setForm] = useState({ title: '', country: '', startDate: '', endDate: '', emoji: '🗼' });
-  const [creating, setCreating] = useState(false);
-
-  const handleCreate = async () => {
-    if (!form.title || !form.country || !form.startDate || !form.endDate || !user) return;
-    setCreating(true);
-    try {
-      const id = await createTrip({
-        title: form.emoji + ' ' + form.title,
-        country: form.country,
-        startDate: form.startDate,
-        endDate: form.endDate,
-        ownerId: user.uid,
-      });
-      toast('สร้างทริปแล้ว!', 'success');
-      setForm({ title: '', country: '', startDate: '', endDate: '', emoji: '🗼' });
-      onClose();
-      onCreated(id);
-    } catch {
-      toast('เกิดข้อผิดพลาด', 'error');
-    }
-    setCreating(false);
-  };
-
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-end md:items-center justify-center">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose}/>
-      <div className="relative w-full max-w-md bg-white rounded-t-3xl md:rounded-2xl p-6 z-10"
-        style={{ boxShadow: 'var(--shadow-lg)' }}>
-        <div className="w-9 h-1 bg-[var(--border)] rounded-full mx-auto mb-5 md:hidden"/>
-        <h2 className="text-lg font-bold mb-5" style={{ fontFamily: 'var(--font-head)' }}>สร้างทริปใหม่</h2>
-
-        {/* Emoji picker */}
-        <p className="text-xs font-semibold text-[var(--text-muted)] uppercase tracking-wider mb-2">ไอคอนทริป</p>
-        <div className="flex flex-wrap gap-2 mb-4">
-          {TRIP_EMOJIS.map(e => (
-            <button key={e} onClick={() => setForm(f => ({...f, emoji: e}))}
-              className="w-10 h-10 rounded-xl text-xl transition-all"
-              style={{
-                background: form.emoji === e ? 'var(--accent-light)' : 'var(--bg)',
-                border: form.emoji === e ? '2px solid var(--accent)' : '2px solid transparent',
-              }}>
-              {e}
-            </button>
-          ))}
-        </div>
-
-        <div className="space-y-3">
-          <input
-            type="text" placeholder="ชื่อทริป เช่น Tokyo Adventure 2026"
-            value={form.title}
-            onChange={e => setForm(f => ({...f, title: e.target.value}))}
-            className="w-full px-4 py-3 border border-[var(--border)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-colors"
-            style={{ fontFamily: 'var(--font-body)' }}
-          />
-          <input
-            type="text" placeholder="ประเทศ เช่น Japan"
-            value={form.country}
-            onChange={e => setForm(f => ({...f, country: e.target.value}))}
-            className="w-full px-4 py-3 border border-[var(--border)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-colors"
-            style={{ fontFamily: 'var(--font-body)' }}
-          />
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs text-[var(--text-muted)] mb-1 block">วันเริ่มต้น</label>
-              <input type="date" value={form.startDate}
-                onChange={e => setForm(f => ({...f, startDate: e.target.value}))}
-                className="w-full px-3 py-2.5 border border-[var(--border)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-colors"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-[var(--text-muted)] mb-1 block">วันสิ้นสุด</label>
-              <input type="date" value={form.endDate}
-                onChange={e => setForm(f => ({...f, endDate: e.target.value}))}
-                className="w-full px-3 py-2.5 border border-[var(--border)] rounded-xl text-sm outline-none focus:border-[var(--accent)] transition-colors"
-              />
-            </div>
-          </div>
-          <button onClick={handleCreate}
-            disabled={creating || !form.title || !form.country || !form.startDate || !form.endDate}
-            className="btn-primary w-full mt-1">
-            {creating ? 'กำลังสร้าง...' : 'สร้างทริป'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function DashboardContent() {
-  const { user } = useAuthContext();
-  const { trips, loading, refresh } = useUserTrips(user?.uid);
-  const { toast } = useToast();
-  const router = useRouter();
-  const [showNew, setShowNew] = useState(false);
-
-  const handleDelete = async (trip: Trip) => {
-    if (!confirm(`ลบ "${trip.title}"? ไม่สามารถกู้คืนได้`)) return;
-    try {
-      await deleteTrip(trip.id);
-      toast('ลบทริปแล้ว', 'info');
-      refresh();
-    } catch {
-      toast('เกิดข้อผิดพลาด', 'error');
-    }
-  };
-
-  const firstName = user?.displayName?.split(' ')[0] || 'นักเดินทาง';
-  const featuredTrip = trips[0];
-
-  return (
-    <div className="min-h-screen" style={{ background: 'var(--bg)' }}>
-      {/* Header */}
-      <div className="bg-white border-b border-[var(--border)] px-5 pt-safe-top pb-4 sticky top-0 z-10"
-        style={{ boxShadow: 'var(--shadow-sm)' }}>
-        <div className="max-w-2xl mx-auto flex items-center justify-between">
-          <div>
-            <p className="text-xs text-[var(--text-muted)] font-semibold tracking-wider uppercase">{getGreeting()}</p>
-            <h1 className="text-xl font-bold text-[var(--text-primary)]" style={{ fontFamily: 'var(--font-head)' }}>
-              {firstName} ✈️
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setShowNew(true)}
-              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-sm font-semibold text-white"
-              style={{ background: 'var(--accent)' }}>
-              <Plus size={16}/> ทริปใหม่
-            </button>
-            {user?.photoURL ? (
-              <img src={user.photoURL} alt="" className="w-9 h-9 rounded-full border-2 border-[var(--border)] cursor-pointer"
-                onClick={() => signOut(auth)}/>
-            ) : (
-              <button onClick={() => signOut(auth)}
-                className="w-9 h-9 rounded-full bg-[var(--bg)] border border-[var(--border)] flex items-center justify-center text-[var(--text-muted)]">
-                <LogOut size={16}/>
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-
-      <main className="max-w-2xl mx-auto px-4 py-5 space-y-6 pb-24">
-
-        {/* Featured trip gradient card */}
-        {!loading && featuredTrip && (
-          <div
-            onClick={() => router.push(`/trips/${featuredTrip.id}/plan`)}
-            className="relative rounded-3xl p-5 cursor-pointer overflow-hidden"
-            style={{
-              background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 60%, #0891B2 100%)',
-              boxShadow: '0 8px 32px rgba(79,70,229,.35)',
-            }}
-          >
-            <div className="absolute top-0 right-0 text-8xl opacity-20 select-none leading-none translate-x-4 -translate-y-2">
-              {TRIP_EMOJIS[featuredTrip.title.charCodeAt(0) % TRIP_EMOJIS.length]}
-            </div>
-            <p className="text-white/70 text-xs font-semibold uppercase tracking-wider mb-1">ทริปล่าสุด</p>
-            <h2 className="text-white text-xl font-bold mb-3" style={{ fontFamily: 'var(--font-head)' }}>
-              {featuredTrip.title}
-            </h2>
-            <div className="flex items-center gap-3">
-              <span className="bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full">
-                {featuredTrip.country}
-              </span>
-              <span className="bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full">
-                {dayCount(featuredTrip.startDate, featuredTrip.endDate)} วัน
-              </span>
-              <span className="bg-white/20 text-white text-xs font-semibold px-3 py-1 rounded-full">
-                {featuredTrip.startDate}
-              </span>
-            </div>
-            <div className="mt-4 flex items-center gap-1 text-white/80 text-sm font-semibold">
-              <span>ดูแผนทริป</span>
-              <ChevronRight size={16}/>
-            </div>
-          </div>
-        )}
-
-        {/* All trips */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <p className="section-label">ทริปทั้งหมด</p>
-            <span className="text-xs text-[var(--text-muted)]">{trips.length} ทริป</span>
-          </div>
-
-          {loading ? (
-            <div className="space-y-3">
-              {[1,2,3].map(i => (
-                <div key={i} className="h-20 bg-white rounded-2xl animate-pulse border border-[var(--border)]"/>
-              ))}
-            </div>
-          ) : trips.length === 0 ? (
-            <EmptyState
-              icon={<MapPin size={28}/>}
-              title="ยังไม่มีทริป"
-              description="สร้างทริปแรกของคุณเพื่อเริ่มวางแผนการเดินทาง"
-              action={
-                <button onClick={() => setShowNew(true)} className="btn-primary text-sm px-5 py-2.5">
-                  สร้างทริปแรก
-                </button>
-              }
-            />
-          ) : (
-            <div className="space-y-3">
-              {trips.map(trip => (
-                <TripCard
-                  key={trip.id}
-                  trip={trip}
-                  onClick={() => router.push(`/trips/${trip.id}/plan`)}
-                  onDelete={() => handleDelete(trip)}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      </main>
-
-      <NewTripModal
-        open={showNew}
-        onClose={() => setShowNew(false)}
-        onCreated={(id) => router.push(`/trips/${id}/upload`)}
-      />
-    </div>
-  );
+function trippEmoji(t: Trip) {
+  return (t as Trip & { emoji?: string }).emoji ?? TRIP_EMOJIS[t.title.charCodeAt(0) % TRIP_EMOJIS.length];
 }
 
 export default function DashboardPage() {
   return (
     <AuthGuard>
-      <DashboardContent />
+      <DashboardInner />
     </AuthGuard>
   );
 }
+
+function DashboardInner() {
+  const { user } = useAuthContext();
+  const { trips } = useUserTrips(user?.uid);
+  const router = useRouter();
+  const { toast } = useToast();
+
+  const [showNew, setShowNew] = useState(false);
+
+  const { featured, others } = useMemo(() => {
+    if (!trips || trips.length === 0) return { featured: null as Trip | null, others: [] as Trip[] };
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const upcoming = [...trips]
+      .filter((t) => new Date(t.startDate) >= today)
+      .sort((a, b) => +new Date(a.startDate) - +new Date(b.startDate));
+    if (upcoming.length > 0) {
+      const head = upcoming[0];
+      return { featured: head, others: trips.filter((t) => t.id !== head.id) };
+    }
+    return { featured: trips[0] ?? null, others: trips.slice(1) };
+  }, [trips]);
+
+  return (
+    <>
+
+      <div className="app-page">
+        {/* Header */}
+        <div style={{ padding: '20px 20px 16px', background: 'white', borderBottom: '1px solid var(--border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <div>
+              <p style={{ fontSize: 12, color: 'var(--text-muted)', fontWeight: 500 }}>{greet()}</p>
+              <h1 style={{ fontSize: 22, fontWeight: 700, fontFamily: 'var(--font-head)', color: 'var(--text-primary)' }}>
+                ทริปของฉัน
+              </h1>
+            </div>
+            <button
+              className="btn-primary"
+              onClick={() => setShowNew(true)}
+              style={{ padding: '8px 16px', fontSize: 13, borderRadius: 99, whiteSpace: 'nowrap', flexShrink: 0 }}
+            >
+              <IconPlus /> สร้างทริป
+            </button>
+          </div>
+        </div>
+
+        <div style={{ padding: '16px 16px 0' }}>
+          {featured && (
+            <div style={{ marginBottom: 16 }}>
+              <p className="section-label" style={{ marginBottom: 10 }}>ทริปถัดไป</p>
+              <FeaturedCard trip={featured} onOpen={() => router.push(`/trips/${featured.id}/plan`)} />
+            </div>
+          )}
+
+          <p className="section-label" style={{ marginBottom: 10 }}>ทริปทั้งหมด</p>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {!featured && others.length === 0 && <EmptyHero onCreate={() => setShowNew(true)} />}
+            {others.map((trip, idx) => (
+              <Link
+                key={trip.id}
+                href={`/trips/${trip.id}/plan`}
+                className="card"
+                style={{
+                  padding: 14,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 12,
+                  textDecoration: 'none',
+                  color: 'inherit',
+                }}
+              >
+                <div
+                  style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    flexShrink: 0,
+                    background: `${DAY_COLORS[idx % DAY_COLORS.length]}18`,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 24,
+                  }}
+                >
+                  {trippEmoji(trip)}
+                </div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <h3
+                    style={{
+                      fontSize: 15,
+                      fontWeight: 600,
+                      marginBottom: 2,
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                    }}
+                  >
+                    {trip.title}
+                  </h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+                      {daysBetween(trip.startDate, trip.endDate)} วัน
+                    </span>
+                    <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--border)' }} />
+                    <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{trip.country}</span>
+                    {trip.collaborators && trip.collaborators.length > 1 && (
+                      <>
+                        <div style={{ width: 3, height: 3, borderRadius: '50%', background: 'var(--border)' }} />
+                        <CollabAvatars
+                          users={trip.collaborators.map((uid, i) => ({
+                            id: uid,
+                            name: uid.slice(0, 1).toUpperCase(),
+                            color: DAY_COLORS[i % DAY_COLORS.length],
+                          }))}
+                          size={18}
+                        />
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div style={{ color: 'var(--text-muted)' }}>
+                  <IconChevRight />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <BottomNav />
+
+      <NewTripSheet
+        open={showNew}
+        onClose={() => setShowNew(false)}
+        onCreate={async (form) => {
+          if (!user) {
+            toast('กรุณาเข้าสู่ระบบก่อน', 'error');
+            return;
+          }
+          try {
+            const id = await createTrip({
+              title: form.title,
+              country: form.country || 'ไทย',
+              startDate: form.startDate,
+              endDate: form.endDate,
+              ownerId: user.uid,
+            });
+            toast('สร้างทริปแล้ว!', 'success');
+            setShowNew(false);
+            router.push(`/trips/${id}/upload`);
+          } catch (err) {
+            console.error(err);
+            toast('สร้างทริปไม่สำเร็จ', 'error');
+          }
+        }}
+      />
+    </>
+  );
+}
+
+function FeaturedCard({ trip, onOpen }: { trip: Trip; onOpen: () => void }) {
+  const accent = 'var(--accent)';
+  const days = daysBetween(trip.startDate, trip.endDate);
+  // Compute days-until on the client only — keeps SSR + render pure
+  const [daysUntil, setDaysUntil] = useState<number | null>(null);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot init from Date.now() (impure during render)
+    setDaysUntil(Math.ceil((+new Date(trip.startDate) - Date.now()) / 86400000));
+  }, [trip.startDate]);
+  const emoji = trippEmoji(trip);
+
+  return (
+    <div
+      className="card"
+      onClick={onOpen}
+      style={{
+        background: `linear-gradient(135deg, ${accent}15, ${accent}05)`,
+        border: '1.5px solid color-mix(in srgb, var(--accent) 30%, transparent)',
+        cursor: 'pointer',
+        padding: 16,
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+            <span
+              style={{
+                background: accent,
+                color: 'white',
+                fontSize: 10,
+                fontWeight: 700,
+                padding: '2px 8px',
+                borderRadius: 99,
+              }}
+            >
+              {daysUntil === null
+                ? 'ทริปของคุณ'
+                : daysUntil > 0
+                ? 'กำลังมา'
+                : daysUntil === 0
+                ? 'วันนี้!'
+                : 'อยู่ระหว่างทริป'}
+            </span>
+            {daysUntil !== null && daysUntil > 0 && (
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{daysUntil} วัน</span>
+            )}
+          </div>
+          <h2 style={{ fontSize: 17, fontWeight: 700, fontFamily: 'var(--font-head)' }}>{trip.title}</h2>
+          <p style={{ fontSize: 13, color: 'var(--text-secondary)', display: 'flex', alignItems: 'center', gap: 4, marginTop: 2 }}>
+            <span style={{ fontSize: 16 }}>{emoji}</span>
+            <span style={{ lineHeight: 1 }}>{trip.country}</span>
+          </p>
+        </div>
+        <div style={{ fontSize: 36 }}>{emoji}</div>
+      </div>
+
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <CollabAvatars
+          users={(trip.collaborators || []).map((uid, i) => ({
+            id: uid,
+            name: uid.slice(0, 1).toUpperCase(),
+            color: DAY_COLORS[i % DAY_COLORS.length],
+          }))}
+        />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{days} วัน</span>
+          <div style={{ width: 4, height: 4, borderRadius: '50%', background: 'var(--border)' }} />
+          <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+            {thaiShortDate(trip.startDate)} – {thaiShortDate(trip.endDate)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EmptyHero({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div
+      style={{
+        padding: '40px 20px',
+        textAlign: 'center',
+        background: 'var(--surface)',
+        borderRadius: 'var(--radius)',
+        border: '1px dashed var(--border)',
+      }}
+    >
+      <div style={{ fontSize: 48, marginBottom: 12 }}>🗺️</div>
+      <h3 style={{ fontSize: 16, fontWeight: 700, marginBottom: 4 }}>ยังไม่มีทริป</h3>
+      <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16 }}>
+        เริ่มสร้างทริปแรกของคุณกันเลย
+      </p>
+      <button className="btn-primary" onClick={onCreate}>
+        <IconPlus /> สร้างทริปใหม่
+      </button>
+    </div>
+  );
+}
+
+interface NewTripForm {
+  title: string;
+  country: string;
+  startDate: string;
+  endDate: string;
+  emoji: string;
+}
+
+function NewTripSheet({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (f: NewTripForm) => void;
+}) {
+  const [form, setForm] = useState<NewTripForm>({
+    title: '',
+    country: '',
+    startDate: '',
+    endDate: '',
+    emoji: '🗾',
+  });
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+
+  const valid = form.title && form.startDate && form.endDate;
+
+  return (
+    <>
+      <div className={`sheet-overlay ${open ? 'open' : ''}`} onClick={onClose} />
+      <div className={`bottom-sheet ${open ? 'open' : ''}`}>
+        <div className="sheet-handle" />
+        <div style={{ padding: '20px 20px 40px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+            <h2 style={{ fontSize: 18, fontWeight: 700, fontFamily: 'var(--font-head)' }}>สร้างทริปใหม่</h2>
+            <button
+              onClick={onClose}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', padding: 4 }}
+            >
+              <IconX />
+            </button>
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div>
+              <label style={labelStyle}>ไอคอนทริป</label>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <button
+                  onClick={() => setShowEmojiPicker((v) => !v)}
+                  style={{
+                    width: 52,
+                    height: 52,
+                    borderRadius: 14,
+                    border: `2px solid ${showEmojiPicker ? 'var(--accent)' : 'var(--border)'}`,
+                    background: 'var(--bg)',
+                    fontSize: 28,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    transition: 'border-color .15s',
+                    flexShrink: 0,
+                  }}
+                >
+                  {form.emoji}
+                </button>
+                <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>กดเพื่อเลือก emoji สำหรับทริป</span>
+              </div>
+              {showEmojiPicker && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: 10,
+                    background: 'white',
+                    border: '1px solid var(--border)',
+                    borderRadius: 12,
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 6,
+                  }}
+                >
+                  {TRIP_EMOJIS.map((e) => (
+                    <button
+                      key={e}
+                      onClick={() => {
+                        setForm((f) => ({ ...f, emoji: e }));
+                        setShowEmojiPicker(false);
+                      }}
+                      style={{
+                        width: 40,
+                        height: 40,
+                        borderRadius: 10,
+                        border: 'none',
+                        cursor: 'pointer',
+                        fontSize: 22,
+                        background: form.emoji === e ? 'var(--accent-light)' : 'var(--bg)',
+                        outline: form.emoji === e ? '2px solid var(--accent)' : 'none',
+                        transition: 'all .1s',
+                      }}
+                    >
+                      {e}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <label style={labelStyle}>ชื่อทริป *</label>
+              <input
+                className="input"
+                placeholder="เช่น โตเกียว ซากุระ 2026"
+                value={form.title}
+                onChange={(e) => setForm((f) => ({ ...f, title: e.target.value }))}
+              />
+            </div>
+
+            <div>
+              <label style={labelStyle}>ประเทศ</label>
+              <input
+                className="input"
+                placeholder="เช่น Japan"
+                value={form.country}
+                onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))}
+              />
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+              <div>
+                <label style={labelStyle}>วันออกเดินทาง</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={form.startDate}
+                  onChange={(e) => setForm((f) => ({ ...f, startDate: e.target.value }))}
+                />
+              </div>
+              <div>
+                <label style={labelStyle}>วันกลับ</label>
+                <input
+                  className="input"
+                  type="date"
+                  value={form.endDate}
+                  onChange={(e) => setForm((f) => ({ ...f, endDate: e.target.value }))}
+                />
+              </div>
+            </div>
+
+            <button
+              className="btn-primary"
+              style={{ width: '100%' }}
+              onClick={() => valid && onCreate(form)}
+              disabled={!valid}
+            >
+              สร้างทริป
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 600,
+  color: 'var(--text-secondary)',
+  display: 'block',
+  marginBottom: 6,
+};

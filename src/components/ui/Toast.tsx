@@ -1,67 +1,70 @@
 'use client';
 
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
-import { CheckCircle, AlertCircle, X, Info } from 'lucide-react';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
 
-type ToastType = 'success' | 'error' | 'info';
+type ToastVariant = 'default' | 'success' | 'error' | 'info';
 
-interface Toast {
+interface ToastState {
   id: number;
-  message: string;
-  type: ToastType;
+  msg: string;
+  variant: ToastVariant;
 }
 
-interface ToastContextType {
-  toast: (message: string, type?: ToastType) => void;
+interface ToastApi {
+  toast: (msg: string, variant?: ToastVariant) => void;
 }
 
-const ToastContext = createContext<ToastContextType>({ toast: () => {} });
-
-let nextId = 0;
-
-export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
-
-  const addToast = useCallback((message: string, type: ToastType = 'info') => {
-    const id = nextId++;
-    setToasts(prev => [...prev, { id, message, type }]);
-    setTimeout(() => {
-      setToasts(prev => prev.filter(t => t.id !== id));
-    }, 4000);
-  }, []);
-
-  const remove = useCallback((id: number) => {
-    setToasts(prev => prev.filter(t => t.id !== id));
-  }, []);
-
-  const icons = { success: CheckCircle, error: AlertCircle, info: Info };
-  const colors = {
-    success: 'bg-green-50 border-green-200 text-green-800',
-    error: 'bg-red-50 border-red-200 text-red-800',
-    info: 'bg-blue-50 border-blue-200 text-blue-800',
-  };
-
-  return (
-    <ToastContext.Provider value={{ toast: addToast }}>
-      {children}
-      <div className="fixed bottom-4 right-4 z-[100] flex flex-col gap-2">
-        {toasts.map(t => {
-          const Icon = icons[t.type];
-          return (
-            <div key={t.id} className={`flex items-center gap-2 px-4 py-3 rounded-xl border shadow-lg ${colors[t.type]} animate-slide-up`}>
-              <Icon size={18} />
-              <span className="text-sm font-medium flex-1">{t.message}</span>
-              <button onClick={() => remove(t.id)} className="p-0.5 hover:opacity-70">
-                <X size={14} />
-              </button>
-            </div>
-          );
-        })}
-      </div>
-    </ToastContext.Provider>
-  );
-}
+const ToastCtx = createContext<ToastApi>({ toast: () => {} });
 
 export function useToast() {
-  return useContext(ToastContext);
+  return useContext(ToastCtx);
+}
+
+/**
+ * Single-toast provider — pixel-matched to the HTML reference's
+ * `.toast` style (top center, dark pill, fades after 2s).
+ */
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [items, setItems] = useState<ToastState[]>([]);
+
+  const toast = useCallback((msg: string, variant: ToastVariant = 'default') => {
+    const id = Date.now() + Math.random();
+    setItems((prev) => [...prev, { id, msg, variant }]);
+  }, []);
+
+  // auto-dismiss after the CSS animation finishes (toastIn 0.3s + 2s + toastOut 0.3s)
+  useEffect(() => {
+    if (items.length === 0) return;
+    const timers = items.map((t) =>
+      setTimeout(() => {
+        setItems((prev) => prev.filter((i) => i.id !== t.id));
+      }, 2600),
+    );
+    return () => timers.forEach(clearTimeout);
+  }, [items]);
+
+  return (
+    <ToastCtx.Provider value={{ toast }}>
+      {children}
+      {items.map((t, i) => (
+        <div
+          key={t.id}
+          className="toast"
+          style={{
+            top: 60 + i * 40,
+            background:
+              t.variant === 'success'
+                ? '#065F46'
+                : t.variant === 'error'
+                ? '#991B1B'
+                : t.variant === 'info'
+                ? '#1E3A8A'
+                : '#111827',
+          }}
+        >
+          {t.msg}
+        </div>
+      ))}
+    </ToastCtx.Provider>
+  );
 }

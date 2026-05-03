@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Spot } from '@/types';
 import SpotCard from './SpotCard';
 
-interface TimelineProps {
+interface Props {
   spots: Spot[];
   dayColor: string;
   onToggleCheck: (spotId: string) => void;
@@ -16,15 +16,17 @@ interface TimelineProps {
 
 export default function Timeline({
   spots, dayColor, onToggleCheck, onTimeEdit, onNoteEdit, onDelete, onReorder,
-}: TimelineProps) {
+}: Props) {
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [overIdx, setOverIdx] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   if (spots.length === 0) {
     return (
-      <div className="text-center py-12">
-        <p className="text-sm" style={{ color: 'var(--text-muted)' }}>ยังไม่มีสถานที่ในวันนี้</p>
-        <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>ค้นหาหรือเพิ่มสถานที่ด้านบน</p>
+      <div style={{ textAlign: 'center', padding: '40px 20px' }}>
+        <div style={{ fontSize: 48, marginBottom: 12 }}>🗺️</div>
+        <p style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>ยังไม่มีสถานที่</p>
+        <p style={{ fontSize: 14, color: 'var(--text-muted)' }}>ค้นหาและเพิ่มสถานที่ด้านบน</p>
       </div>
     );
   }
@@ -32,33 +34,29 @@ export default function Timeline({
   return (
     <div>
       {spots.map((spot, i) => (
-        <div
+        <SpotCard
           key={spot.id}
-          onDragOver={e => { e.preventDefault(); setOverIdx(i); }}
-          onDragLeave={() => setOverIdx(null)}
+          spot={spot}
+          index={i}
+          dayColor={dayColor}
+          selected={selectedId === spot.id}
+          onSelect={() => setSelectedId((prev) => (prev === spot.id ? null : spot.id))}
+          onToggleCheck={onToggleCheck}
+          onTimeEdit={onTimeEdit}
+          onNoteEdit={onNoteEdit}
+          onDelete={onDelete}
+          draggable={!!onReorder}
+          onDragStart={() => setDragIdx(i)}
+          onDragOver={(e) => { e.preventDefault(); setOverIdx(i); }}
           onDrop={() => {
             if (dragIdx !== null && dragIdx !== i) onReorder?.(dragIdx, i);
             setDragIdx(null);
             setOverIdx(null);
           }}
-          className={`transition-all duration-150 ${
-            overIdx === i && dragIdx !== i ? 'opacity-40 scale-[0.97]'
-            : dragIdx === i ? 'opacity-60' : ''
-          }`}
-        >
-          <SpotCard
-            spot={spot}
-            index={i}
-            dayColor={dayColor}
-            onToggleCheck={onToggleCheck}
-            onTimeEdit={onTimeEdit}
-            onNoteEdit={onNoteEdit}
-            onDelete={onDelete}
-            draggable={!!onReorder}
-            onDragStart={() => setDragIdx(i)}
-            onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
-          />
-        </div>
+          onDragEnd={() => { setDragIdx(null); setOverIdx(null); }}
+          isDragging={dragIdx === i}
+          isOver={overIdx === i && dragIdx !== i}
+        />
       ))}
     </div>
   );
