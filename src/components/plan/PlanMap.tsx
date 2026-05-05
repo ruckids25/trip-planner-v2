@@ -110,5 +110,17 @@ export default function PlanMap({ spots, dayColor, hotelLat, hotelLng, selectedS
     };
   }, [spots, dayColor, hotelLat, hotelLng, selectedSpotId, onSpotSelect]);
 
-  return <div ref={mapRef} className="w-full h-full min-h-[400px] rounded-xl overflow-hidden" />;
+  return (
+    <div
+      ref={mapRef}
+      // Fill parent exactly — DO NOT set min-height; the parent decides the size.
+      // position:relative + overflow:hidden contains Leaflet's absolutely-positioned tiles.
+      style={{
+        width: '100%',
+        height: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    />
+  );
 }

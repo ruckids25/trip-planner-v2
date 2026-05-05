@@ -294,8 +294,17 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
           </div>
         </div>
 
-        {/* ── Map (top) — 160px keeps search box + first spot in view ── */}
-        <div style={{ height: 160, flexShrink: 0, position: 'relative' }}>
+        {/* ── Map (top) — fixed 200px frame; overflow:hidden keeps Leaflet contained ── */}
+        <div
+          style={{
+            height: 200,
+            minHeight: 200,
+            maxHeight: 200,
+            flexShrink: 0,
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
           <PlanMap
             spots={daySpots}
             dayColor={color}
