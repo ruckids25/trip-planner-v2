@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { auth, googleProvider } from '@/lib/firebase';
 import { saveUser } from '@/lib/firestore';
+import { track } from '@/lib/analytics';
 
 /**
  * Detect in-app webviews where Google sign-in cannot work because
@@ -46,10 +47,18 @@ export function useAuth() {
       console.warn('[auth] getRedirectResult skipped:', err?.code || err?.message);
     });
 
+    // Track only the FIRST time a user becomes authenticated in this tab,
+    // so onAuthStateChanged firing multiple times doesn't inflate sign_in counts.
+    let signInTracked = false;
+
     const unsub = onAuthStateChanged(auth, async (u) => {
       if (cancelled) return;
       setUser(u);
       if (u) {
+        if (!signInTracked) {
+          signInTracked = true;
+          track('sign_in', { method: 'google' });
+        }
         try {
           await saveUser(u.uid, {
             displayName: u.displayName || '',
@@ -94,6 +103,7 @@ export function useAuth() {
   }, []);
 
   const logout = useCallback(async () => {
+    track('sign_out');
     await signOut(auth);
   }, []);
 

@@ -8,6 +8,7 @@ import AuthGuard from '@/components/auth/AuthGuard';
 import { addSpot } from '@/lib/firestore';
 import { uploadImage, resizeImage } from '@/lib/storage';
 import { ocrImage, lookupPlace } from '@/lib/vision';
+import { track } from '@/lib/analytics';
 import { useToast } from '@/components/ui/Toast';
 import { IconChevLeft, IconCheck, IconX } from '@/components/ui/Icons';
 import { SpotType } from '@/types';
@@ -101,6 +102,7 @@ function UploadInner({ params }: { params: Promise<{ tripId: string }> }) {
   const handleProcess = async () => {
     if (!files.length || !user || !trip) return;
     setUploading(true);
+    track('upload_image', { count: files.length });
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i];
@@ -156,6 +158,10 @@ function UploadInner({ params }: { params: Promise<{ tripId: string }> }) {
 
     setUploading(false);
     setUploaded(true);
+    track('ai_extract_done', {
+      images: files.length,
+      spots_found: files.reduce((a, f) => a + f.spots.length, 0),
+    });
     toast('AI ดึงข้อมูลสำเร็จ! 🎉', 'success');
   };
 

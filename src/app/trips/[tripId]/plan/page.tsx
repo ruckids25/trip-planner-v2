@@ -13,6 +13,7 @@ import Timeline from '@/components/plan/Timeline';
 import PlanMap from '@/components/plan/PlanMap';
 import ShareModal from '@/components/plan/ShareModal';
 import { optimizeRoute } from '@/lib/route-optimizer';
+import { track } from '@/lib/analytics';
 import { GROUP_COLORS, SpotType } from '@/types';
 import {
   IconChevLeft, IconChevRight, IconGrid, IconSearch, IconLink, IconWand, IconX, IconHotel,
@@ -122,6 +123,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
     for (let i = 0; i < optimized.length; i++) {
       await updateSpot(optimized[i].id, { sortOrder: i });
     }
+    track('optimize_route', { day: selectedDay + 1, spots: daySpots.length });
     toast('จัดเส้นทางใหม่สำเร็จ ✨', 'success');
   }, [selectedDay, getDaySpots, updateSpot, toast]);
 
@@ -141,6 +143,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
       dayIdx: selectedDay,
       sortOrder: getDaySpots(selectedDay).length,
     });
+    track('add_spot', { type: result.type, day: selectedDay + 1 });
     toast(`เพิ่ม "${result.name}" แล้ว! ✅`, 'success');
   }, [selectedDay, groups, addSpot, getDaySpots, toast]);
 
@@ -158,6 +161,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
   const handleSetHotel = useCallback(async (hotel: HotelResult) => {
     if (selectedDay === null) return;
     await updateMeta(selectedDay, { hotelName: hotel.name, hotelLat: hotel.lat, hotelLng: hotel.lng });
+    track('set_hotel', { day: selectedDay + 1 });
     toast(`ตั้งโรงแรม "${hotel.name}" แล้ว`, 'success');
   }, [selectedDay, updateMeta, toast]);
 
@@ -369,7 +373,7 @@ export default function PlanPage({ params }: { params: Promise<{ tripId: string 
               onToggleCheck={handleToggleCheck}
               onTimeEdit={handleTimeEdit}
               onNoteEdit={handleNoteEdit}
-              onDelete={(id) => removeSpot(id)}
+              onDelete={(id) => { track('delete_spot'); return removeSpot(id); }}
               onReorder={handleReorder}
             />
           </div>

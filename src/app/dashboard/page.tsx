@@ -7,6 +7,7 @@ import AuthGuard from '@/components/auth/AuthGuard';
 import { useAuthContext } from '@/components/auth/AuthProvider';
 import { useUserTrips } from '@/hooks/useTrip';
 import { createTrip } from '@/lib/firestore';
+import { track } from '@/lib/analytics';
 import { useToast } from '@/components/ui/Toast';
 import { Trip } from '@/types';
 import BottomNav from '@/components/ui/BottomNav';
@@ -62,6 +63,7 @@ function DashboardInner() {
     setDeleting(true);
     try {
       await deleteTripFromHook(confirmDelete.id);
+      track('delete_trip', { country: confirmDelete.country });
       toast(`ลบทริป "${confirmDelete.title}" แล้ว`, 'success');
       setConfirmDelete(null);
     } catch (err) {
@@ -114,7 +116,10 @@ function DashboardInner() {
               <p className="section-label" style={{ marginBottom: 10 }}>ทริปถัดไป</p>
               <FeaturedCard
                 trip={featured}
-                onOpen={() => router.push(`/trips/${featured.id}/plan`)}
+                onOpen={() => {
+                  track('open_trip', { source: 'featured', country: featured.country });
+                  router.push(`/trips/${featured.id}/plan`);
+                }}
                 onDelete={() => setConfirmDelete(featured)}
               />
             </div>
@@ -127,6 +132,7 @@ function DashboardInner() {
               <Link
                 key={trip.id}
                 href={`/trips/${trip.id}/plan`}
+                onClick={() => track('open_trip', { source: 'list', country: trip.country })}
                 className="card"
                 style={{
                   padding: 14,
@@ -236,6 +242,10 @@ function DashboardInner() {
               startDate: form.startDate,
               endDate: form.endDate,
               ownerId: user.uid,
+            });
+            track('create_trip', {
+              country: form.country || 'ไทย',
+              days: daysBetween(form.startDate, form.endDate),
             });
             toast('สร้างทริปแล้ว!', 'success');
             setShowNew(false);

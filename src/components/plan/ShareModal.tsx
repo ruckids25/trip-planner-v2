@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { Trip } from '@/types';
 import { setTripShared } from '@/lib/firestore';
+import { track } from '@/lib/analytics';
 import { useToast } from '@/components/ui/Toast';
 import { IconCheck, IconCopy, IconX } from '@/components/ui/Icons';
 
@@ -24,9 +25,11 @@ export default function ShareModal({ trip, open, onClose }: Props) {
   const [permission, setPermission] = useState<'view' | 'edit'>('view');
   const [copied, setCopied] = useState(false);
 
-  // Flip isShared on open the first time
+  // Flip isShared on open the first time + track open event
   useEffect(() => {
-    if (open && !trip.isShared) {
+    if (!open) return;
+    track('share_open', { trip_id: trip.id });
+    if (!trip.isShared) {
       setTripShared(trip.id, true).catch(() => {
         toast('เปิดการแชร์ไม่สำเร็จ', 'error');
       });
@@ -44,6 +47,7 @@ export default function ShareModal({ trip, open, onClose }: Props) {
     try {
       await navigator.clipboard.writeText(shareUrl);
       setCopied(true);
+      track('share_copy', { permission });
       toast('คัดลอกลิงก์แล้ว!', 'success');
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -207,6 +211,7 @@ export default function ShareModal({ trip, open, onClose }: Props) {
                 href={s.href}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => track('share_external', { channel: s.label })}
                 style={{
                   flex: 1,
                   padding: '10px 0',
