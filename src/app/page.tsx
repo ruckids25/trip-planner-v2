@@ -13,13 +13,18 @@ import {
  * Sarabun + DM Sans, --bg / --surface / --border).
  */
 export default function LandingPage() {
-  const { user, loading, login } = useAuthContext();
+  const { user, loading } = useAuthContext();
   const router = useRouter();
 
   // Already signed in → straight to dashboard
   useEffect(() => {
     if (!loading && user) router.push('/dashboard');
   }, [user, loading, router]);
+
+  // Route the CTA buttons to /login — that page handles the in-app-browser
+  // warning + clean Google sign-in flow. Calling login() directly from here
+  // would throw silently in Facebook/IG webviews with no UI to catch it.
+  const login = () => router.push('/login');
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--surface)', color: 'var(--text-primary)' }}>

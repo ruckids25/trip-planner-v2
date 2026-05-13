@@ -1,11 +1,14 @@
 import type { Metadata } from 'next';
+import { GoogleAnalytics } from '@next/third-parties/google';
 import './globals.css';
 import ClientProviders from './providers';
 
 export const metadata: Metadata = {
-  title: 'TripPlanner — Plan Your Perfect Trip',
-  description: 'Upload screenshots, auto-group spots, and create beautiful trip plans with real-time collaboration.',
+  title: 'Trip Planner — วางแผนทริปด้วย AI',
+  description: 'อัปโหลดภาพสถานที่จาก Google Maps แล้วให้ AI ดึงข้อมูล จัดกลุ่ม และสร้างกำหนดการรายวันให้อัตโนมัติ',
 };
+
+const GA_ID = process.env.NEXT_PUBLIC_GA_ID;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -21,6 +24,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <ClientProviders>
           {children}
         </ClientProviders>
+        {/* Google Analytics 4 — only loads in production with NEXT_PUBLIC_GA_ID set */}
+        {GA_ID && <GoogleAnalytics gaId={GA_ID} />}
       </body>
     </html>
   );
