@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuthContext } from '@/components/auth/AuthProvider';
 import Header from '@/components/ui/Header';
@@ -241,6 +242,7 @@ function AdminContent() {
       userSpots[t.ownerId] = (userSpots[t.ownerId] || 0) + t.spotCount;
     });
     return users.map(u => ({
+      uid: u.uid,
       name: u.displayName || u.email || u.uid,
       email: u.email,
       photoURL: u.photoURL,
@@ -495,11 +497,18 @@ function AdminContent() {
                     <th style={{ ...th, textAlign: 'center' }}>สถานที่</th>
                     <th style={{ ...th, textAlign: 'center' }}>API calls</th>
                     <th style={{ ...th, textAlign: 'right' }}>ใช้ล่าสุด</th>
+                    <th style={{ ...th, textAlign: 'right', width: 80 }}></th>
                   </tr>
                 </thead>
                 <tbody>
                   {userActivity.map((u, i) => (
-                    <tr key={i} style={{ borderBottom: '1px solid var(--border)' }}>
+                    <tr
+                      key={i}
+                      style={{ borderBottom: '1px solid var(--border)', cursor: 'pointer' }}
+                      onClick={() => router.push(`/admin/users/${u.uid}`)}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--bg)'; }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent'; }}
+                    >
                       <td style={td}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                           {u.photoURL ? (
@@ -522,10 +531,28 @@ function AdminContent() {
                       <td style={{ ...td, textAlign: 'center' }}>{u.spots}</td>
                       <td style={{ ...td, textAlign: 'center' }}>{u.apiCalls}</td>
                       <td style={{ ...td, textAlign: 'right', color: 'var(--text-muted)' }}>{u.lastActive}</td>
+                      <td style={{ ...td, textAlign: 'right' }}>
+                        <Link
+                          href={`/admin/users/${u.uid}`}
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 4,
+                            color: ACCENT,
+                            fontWeight: 600,
+                            textDecoration: 'none',
+                            fontSize: 12,
+                            whiteSpace: 'nowrap',
+                          }}
+                        >
+                          ดู →
+                        </Link>
+                      </td>
                     </tr>
                   ))}
                   {userActivity.length === 0 && (
-                    <tr><td colSpan={5} style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>ยังไม่มีผู้ใช้</td></tr>
+                    <tr><td colSpan={6} style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>ยังไม่มีผู้ใช้</td></tr>
                   )}
                 </tbody>
               </table>
